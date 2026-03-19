@@ -1,5 +1,9 @@
 package com.exory550.exorygallery.presentation.screens.home
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -29,17 +33,28 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
     val folders by viewModel.folders.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
+    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        Manifest.permission.READ_MEDIA_IMAGES
+    else
+        Manifest.permission.READ_EXTERNAL_STORAGE
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.loadFolders()
+    }
+
+    LaunchedEffect(Unit) {
+        launcher.launch(permission)
+    }
+
     if (isLoading) LoadingDialog("Memuat folder...")
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "ExoryGallery",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
+                    Text("ExoryGallery", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -55,8 +70,8 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Tidak ada foto ditemukan", style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.loadFolders() }) {
-                        Text("Muat Ulang")
+                    Button(onClick = { launcher.launch(permission) }) {
+                        Text("Izinkan Akses")
                     }
                 }
             }
