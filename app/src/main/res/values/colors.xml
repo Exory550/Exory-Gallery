@@ -1,0 +1,14 @@
+<resources>
+    <color name="exory_primary">#1A1A2E</color>
+    <color name="exory_secondary">#16213E</color>
+    <color name="exory_accent">#0F3460</color>
+    <color name="exory_highlight">#E94560</color>
+    <color name="exory_background">#0D0D1A</color>
+    <color name="exory_surface">#222244</color>
+    <color name="exory_on_primary">#FFFFFF</color>
+    <color name="exory_on_background">#EAEAEA</color>
+    <color name="exory_subtle">#888899</color>
+    <color name="exory_success">#4CAF50</color>
+    <color name="exory_warning">#FFC107</color>
+    <color name="exory_error">#E53935</color>
+</resources>

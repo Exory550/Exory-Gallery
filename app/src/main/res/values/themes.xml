@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.ExoryGallery" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/exory_background</item>
+        <item name="android:navigationBarColor">@color/exory_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

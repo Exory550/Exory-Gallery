@@ -1,0 +1,1 @@
+Smart gallery app by exory550 with vault, map view, and media tools.

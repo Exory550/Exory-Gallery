@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">ExoryGallery</string>
+    <string name="username">exory550</string>
+    <string name="gallery">Galeri</string>
+    <string name="albums">Album</string>
+    <string name="vault">Vault</string>
+    <string name="search">Cari</string>
+    <string name="settings">Pengaturan</string>
+    <string name="statistics">Statistik</string>
+    <string name="cleanup">Pembersih</string>
+    <string name="map">Peta</string>
+    <string name="loading">Memuat...</string>
+    <string name="error_generic">Terjadi kesalahan</string>
+    <string name="no_media">Tidak ada media</string>
+    <string name="permission_required">Izin diperlukan</string>
+</resources>

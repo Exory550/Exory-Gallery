@@ -1,0 +1,3 @@
+app_identifier("com.exory550.exorygallery")
+json_key_file("fastlane/google-play-key.json")
+package_name("com.exory550.exorygallery")

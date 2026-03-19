@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="gallery"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/gallery"
+        android:shortcutLongLabel="@string/gallery">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.exory550.exorygallery"
+            android:targetClass="com.exory550.exorygallery.MainActivity" />
+    </shortcut>
+</shortcuts>

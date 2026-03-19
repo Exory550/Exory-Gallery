@@ -1,0 +1,13 @@
+ExoryGallery is a powerful and private media gallery app developed by exory550.
+
+Features:
+- Browse all photos and videos in a beautiful grid layout
+- Organize media into albums
+- Secure vault with PIN-protected encrypted storage
+- Map view to visualize geotagged photos
+- Advanced search across all media
+- Metadata viewer and EXIF stripper for privacy
+- Duplicate finder and large file cleanup tools
+- Format converter for images
+- Statistics dashboard
+- Dark and light theme support
