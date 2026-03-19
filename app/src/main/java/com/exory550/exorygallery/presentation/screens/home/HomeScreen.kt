@@ -26,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.components.LoadingDialog
+import com.exory550.exorygallery.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +85,7 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(folders, key = { it.path }) { folder ->
-                    FolderCard(folder = folder, onClick = {})
+                    FolderCard(folder = folder, onClick = { navController.navigate(Screen.FolderContent.createRoute(folder.name, folder.path)) })
                 }
             }
         }
