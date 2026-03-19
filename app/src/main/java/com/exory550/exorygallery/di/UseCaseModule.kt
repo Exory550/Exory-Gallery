@@ -24,6 +24,7 @@ import dagger.hilt.components.SingletonComponent
 @Module
 @InstallIn(SingletonComponent::class)
 object UseCaseModule {
+
     @Provides fun provideGetMediaUseCase(r: GalleryRepository) = GetMediaUseCase(r)
     @Provides fun provideScanMediaUseCase(r: GalleryRepository) = ScanMediaUseCase(r)
     @Provides fun provideDeleteMediaUseCase(r: GalleryRepository) = DeleteMediaUseCase(r)

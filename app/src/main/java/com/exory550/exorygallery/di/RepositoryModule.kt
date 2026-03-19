@@ -19,15 +19,19 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object RepositoryModule {
-    @Provides
-    @Singleton
-    fun provideGalleryRepository(mediaDao: MediaDao, localMediaDataSource: LocalMediaDataSource): GalleryRepository =
-        GalleryRepository(mediaDao, localMediaDataSource)
 
     @Provides
     @Singleton
-    fun provideAlbumRepository(albumDao: AlbumDao): AlbumRepository =
-        AlbumRepository(albumDao)
+    fun provideGalleryRepository(
+        mediaDao: MediaDao,
+        localMediaDataSource: LocalMediaDataSource
+    ): GalleryRepository = GalleryRepository(mediaDao, localMediaDataSource)
+
+    @Provides
+    @Singleton
+    fun provideAlbumRepository(
+        albumDao: AlbumDao
+    ): AlbumRepository = AlbumRepository(albumDao)
 
     @Provides
     @Singleton
@@ -36,5 +40,10 @@ object RepositoryModule {
         fileDataSource: FileDataSource,
         encryptionHelper: EncryptionHelper,
         userPreferences: UserPreferences
-    ): VaultRepository = VaultRepository(vaultItemDao, fileDataSource, encryptionHelper, userPreferences)
+    ): VaultRepository = VaultRepository(
+        vaultItemDao,
+        fileDataSource,
+        encryptionHelper,
+        userPreferences
+    )
 }
