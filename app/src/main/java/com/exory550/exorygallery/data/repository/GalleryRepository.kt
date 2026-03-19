@@ -36,11 +36,9 @@ class GalleryRepository @Inject constructor(
         mediaDao.insertAll(images + videos)
     }
 
-    suspend fun deleteMedia(media: Media) =
-        mediaDao.deleteById(media.id)
+    suspend fun deleteMedia(media: Media) = mediaDao.deleteById(media.id)
 
-    suspend fun updateMedia(entity: MediaEntity) =
-        mediaDao.updateMedia(entity)
+    suspend fun updateMedia(entity: MediaEntity) = mediaDao.updateMedia(entity)
 
     suspend fun getMediaCount(): Int = mediaDao.getMediaCount()
 
