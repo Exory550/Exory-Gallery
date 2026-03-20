@@ -20,6 +20,7 @@ import com.exory550.exorygallery.presentation.screens.tools.CleanupScreen
 import com.exory550.exorygallery.presentation.screens.tools.ConverterScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultUnlockScreen
+import com.exory550.exorygallery.presentation.screens.viewer.PhotoViewerScreen
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -36,6 +37,12 @@ sealed class Screen(val route: String) {
             val encodedPath = URLEncoder.encode(folderPath, "UTF-8")
             val encodedName = URLEncoder.encode(folderName, "UTF-8")
             return "folder/$encodedName/$encodedPath"
+        }
+    }
+    object PhotoViewer : Screen("photo/{photoPath}") {
+        fun createRoute(photoPath: String): String {
+            val encoded = URLEncoder.encode(photoPath, "UTF-8")
+            return "photo/$encoded"
         }
     }
     object Map : Screen("map")
@@ -71,6 +78,13 @@ fun ExoryNavGraph(navController: NavHostController) {
             val name = URLDecoder.decode(back.arguments?.getString("folderName") ?: "", "UTF-8")
             val path = URLDecoder.decode(back.arguments?.getString("folderPath") ?: "", "UTF-8")
             FolderContentScreen(navController, name, path)
+        }
+        composable(
+            route = Screen.PhotoViewer.route,
+            arguments = listOf(navArgument("photoPath") { type = NavType.StringType })
+        ) { back ->
+            val encoded = back.arguments?.getString("photoPath") ?: ""
+            PhotoViewerScreen(navController, encoded)
         }
         composable(Screen.Map.route) { MapScreen(navController) }
         composable(Screen.Search.route) { SearchScreen(navController) }

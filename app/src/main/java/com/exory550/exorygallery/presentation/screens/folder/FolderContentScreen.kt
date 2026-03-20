@@ -19,6 +19,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.exory550.exorygallery.presentation.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +106,7 @@ fun FolderContentScreen(
                     model = path,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.aspectRatio(1f).clickable { }
+                    modifier = Modifier.aspectRatio(1f).clickable { navController.navigate(Screen.PhotoViewer.createRoute(path)) }
                 )
             }
         }
