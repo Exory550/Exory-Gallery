@@ -32,8 +32,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.components.LoadingDialog
-import com.exory550.exorygallery.presentation.screens.home.MediaFolder
-import com.exory550.exorygallery.presentation.screens.home.ViewMode
 import com.exory550.exorygallery.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -46,14 +44,18 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
     var gridColumns by remember { mutableStateOf(3) }
     var pinchScale by remember { mutableStateOf(1f) }
 
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-        Manifest.permission.READ_MEDIA_IMAGES
-    else Manifest.permission.READ_EXTERNAL_STORAGE
+    val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+    else
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.loadFolders()
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) viewModel.loadFolders()
     }
-    LaunchedEffect(Unit) { launcher.launch(permission) }
+
+    LaunchedEffect(Unit) { launcher.launch(permissions) }
 
     if (isLoading) LoadingDialog("Memuat...")
 
@@ -85,7 +87,7 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Tidak ada foto ditemukan", style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { launcher.launch(permission) }) { Text("Izinkan Akses") }
+                    Button(onClick = { launcher.launch(permissions) }) { Text("Izinkan Akses") }
                 }
             }
         } else {
@@ -181,9 +183,7 @@ fun FolderCard(folder: MediaFolder, onClick: () -> Unit) {
                 imageVector = Icons.Default.PlayCircle,
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier
-                    .size(36.dp)
-                    .align(Alignment.Center)
+                modifier = Modifier.size(36.dp).align(Alignment.Center)
             )
         }
 
