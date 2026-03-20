@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.navigation.Screen
+import com.exory550.exorygallery.presentation.screens.viewer.PhotoPropertiesSheet
+import com.exory550.exorygallery.presentation.screens.viewer.PhotoMenuSheet
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLDecoder

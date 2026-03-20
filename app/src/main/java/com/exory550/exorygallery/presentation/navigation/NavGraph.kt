@@ -22,6 +22,7 @@ import com.exory550.exorygallery.presentation.screens.vault.VaultScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultUnlockScreen
 import com.exory550.exorygallery.presentation.screens.video.VideoPlayerScreen
 import com.exory550.exorygallery.presentation.screens.viewer.PhotoViewerScreen
+import com.exory550.exorygallery.presentation.screens.editor.ImageEditorScreen
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -51,6 +52,9 @@ sealed class Screen(val route: String) {
     object Cleanup : Screen("cleanup")
     object Converter : Screen("converter")
     object Settings : Screen("settings")
+    object ImageEditor : Screen("editor/{imagePath}") {
+        fun createRoute(path: String) = "editor/${java.net.URLEncoder.encode(path, "UTF-8")}"
+    }
     object Statistics : Screen("statistics")
 }
 
@@ -120,5 +124,11 @@ fun ExoryNavGraph(navController: NavHostController) {
         composable(Screen.Converter.route) { ConverterScreen(navController) }
         composable(Screen.Settings.route) { SettingsScreen(navController) }
         composable(Screen.Statistics.route) { StatisticsScreen(navController) }
+        composable(
+            route = Screen.ImageEditor.route,
+            arguments = listOf(navArgument("imagePath") { type = NavType.StringType })
+        ) { back ->
+            ImageEditorScreen(navController, back.arguments?.getString("imagePath") ?: "")
+        }
     }
 }
