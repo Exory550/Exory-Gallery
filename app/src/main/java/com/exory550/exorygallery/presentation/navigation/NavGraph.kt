@@ -35,15 +35,11 @@ sealed class Screen(val route: String) {
         fun createRoute(mediaId: Long) = "media/$mediaId"
     }
     object FolderContent : Screen("folder/{folderName}/{folderPath}") {
-        fun createRoute(folderName: String, folderPath: String): String {
-            return "folder/${URLEncoder.encode(folderName, "UTF-8")}/${URLEncoder.encode(folderPath, "UTF-8")}"
-        }
+        fun createRoute(folderName: String, folderPath: String) =
+            "folder/${URLEncoder.encode(folderName, "UTF-8")}/${URLEncoder.encode(folderPath, "UTF-8")}"
     }
     object PhotoViewer : Screen("photo/{photoPath}") {
         fun createRoute(photoPath: String) = "photo/${URLEncoder.encode(photoPath, "UTF-8")}"
-    }
-    object PhotoPager : Screen("photo_pager/{photoPath}") {
-        fun createRoute(photoPath: String) = "photo_pager/${URLEncoder.encode(photoPath, "UTF-8")}"
     }
     object VideoPlayer : Screen("video/{videoPath}") {
         fun createRoute(videoPath: String) = "video/${URLEncoder.encode(videoPath, "UTF-8")}"
@@ -97,10 +93,18 @@ fun ExoryNavGraph(navController: NavHostController) {
             PhotoViewerScreen(navController, back.arguments?.getString("photoPath") ?: "")
         }
         composable(
-            route = Screen.PhotoPager.route,
-            arguments = listOf(navArgument("photoPath") { type = NavType.StringType })
+            route = "photo_pager/{photoPath}?all={all}",
+            arguments = listOf(
+                navArgument("photoPath") { type = NavType.StringType },
+                navArgument("all") { type = NavType.StringType; defaultValue = "" }
+            )
         ) { back ->
-            PhotoViewerScreen(navController, back.arguments?.getString("photoPath") ?: "")
+            val encodedPath = back.arguments?.getString("photoPath") ?: ""
+            val allEncoded = back.arguments?.getString("all") ?: ""
+            val allPhotos = if (allEncoded.isNotBlank()) {
+                allEncoded.split(",").map { URLDecoder.decode(it, "UTF-8") }
+            } else emptyList()
+            PhotoViewerScreen(navController, encodedPath, allPhotos)
         }
         composable(
             route = Screen.VideoPlayer.route,

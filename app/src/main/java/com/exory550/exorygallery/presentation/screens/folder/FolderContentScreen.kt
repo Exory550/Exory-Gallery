@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -67,7 +68,7 @@ class FolderContentViewModel @Inject constructor(
             imgCursor?.use {
                 val col = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 while (it.moveToNext()) {
-                    val path = it.getString(col) ?: return@use
+                    val path = it.getString(col) ?: continue
                     result.add(MediaItem(path, false, extension = File(path).extension.uppercase()))
                 }
             }
@@ -81,7 +82,7 @@ class FolderContentViewModel @Inject constructor(
                 val dataCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val durCol = it.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 while (it.moveToNext()) {
-                    val path = it.getString(dataCol) ?: return@use
+                    val path = it.getString(dataCol) ?: continue
                     val dur = it.getLong(durCol)
                     result.add(MediaItem(path, true, dur, File(path).extension.uppercase()))
                 }
@@ -101,7 +102,7 @@ fun FolderContentScreen(
 ) {
     LaunchedEffect(folderPath) { viewModel.loadPhotos(folderPath) }
     val items by viewModel.items.collectAsState()
-    val photoPaths = items.filter { !it.isVideo }.map { it.path }
+    val photoPaths = remember(items) { items.filter { !it.isVideo }.map { it.path } }
 
     Scaffold(
         topBar = {
@@ -123,16 +124,23 @@ fun FolderContentScreen(
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             items(items) { item ->
-                Box(modifier = Modifier.aspectRatio(1f).clickable {
-                    if (item.isVideo) {
-                        val encoded = java.net.URLEncoder.encode(item.path, "UTF-8")
-                        navController.navigate("video/$encoded")
-                    } else {
-                        val encoded = java.net.URLEncoder.encode(item.path, "UTF-8")
-                        val allEncoded = photoPaths.map { java.net.URLEncoder.encode(it, "UTF-8") }
-                        navController.navigate("photo_pager/$encoded")
-                    }
-                }) {
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clickable {
+                            if (item.isVideo) {
+                                val encoded = URLEncoder.encode(item.path, "UTF-8")
+                                navController.navigate("video/$encoded")
+                            } else {
+                                val index = photoPaths.indexOf(item.path).coerceAtLeast(0)
+                                val encodedPath = URLEncoder.encode(item.path, "UTF-8")
+                                val encodedAll = photoPaths.joinToString(",") {
+                                    URLEncoder.encode(it, "UTF-8")
+                                }
+                                navController.navigate("photo_pager/$encodedPath?all=$encodedAll")
+                            }
+                        }
+                ) {
                     AsyncImage(
                         model = item.path,
                         contentDescription = null,
@@ -146,7 +154,9 @@ fun FolderContentScreen(
                     }
                     badge?.let {
                         Box(
-                            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), shape = MaterialTheme.shapes.small)
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) { Text(it, color = Color.White, fontSize = 9.sp) }
@@ -159,7 +169,9 @@ fun FolderContentScreen(
                             modifier = Modifier.size(32.dp).align(Alignment.Center)
                         )
                         Box(
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), shape = MaterialTheme.shapes.small)
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) {
