@@ -39,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLEncoder
+import com.exory550.exorygallery.presentation.navigation.Screen
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -147,7 +148,7 @@ fun FolderContentScreen(
                         .aspectRatio(1f)
                         .clickable {
                             if (item.isVideo) {
-                                navController.navigate("video/${URLEncoder.encode(item.path, "UTF-8")}")
+                                navController.navigate(Screen.VideoPlayer.createRoute(item.path))
                             } else {
                                 val encodedPath = URLEncoder.encode(item.path, "UTF-8")
                                 val encodedAll = photoPaths.joinToString(",") { p ->
