@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -19,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -69,7 +69,6 @@ data class EditParams(
 class ImageEditorViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-
     private val _originalBitmap = MutableStateFlow<Bitmap?>(null)
     private val _previewBitmap = MutableStateFlow<Bitmap?>(null)
     val previewBitmap: StateFlow<Bitmap?> = _previewBitmap
@@ -102,20 +101,52 @@ class ImageEditorViewModel @Inject constructor(
     fun flipV() { updateParam { copy(flipV = !flipV) } }
     fun straighten(angle: Float) { updateParam { copy(straighten = angle) } }
 
-    fun crop(rect: Rect, imageSize: IntSize, canvasSize: IntSize) {
+    fun cropByRect(left: Float, top: Float, right: Float, bottom: Float, canvasW: Int, canvasH: Int) {
         val current = _originalBitmap.value ?: return
         viewModelScope.launch {
+            _isLoading.value = true
             val cropped = withContext(Dispatchers.IO) {
-                val scaleX = current.width.toFloat() / canvasSize.width
-                val scaleY = current.height.toFloat() / canvasSize.height
-                val left = (rect.left * scaleX).toInt().coerceIn(0, current.width - 1)
-                val top = (rect.top * scaleY).toInt().coerceIn(0, current.height - 1)
-                val width = (rect.width * scaleX).toInt().coerceIn(1, current.width - left)
-                val height = (rect.height * scaleY).toInt().coerceIn(1, current.height - top)
-                Bitmap.createBitmap(current, left, top, width, height)
+                val scaleX = current.width.toFloat() / canvasW
+                val scaleY = current.height.toFloat() / canvasH
+                val l = (left * scaleX).toInt().coerceIn(0, current.width - 1)
+                val t = (top * scaleY).toInt().coerceIn(0, current.height - 1)
+                val w = ((right - left) * scaleX).toInt().coerceIn(1, current.width - l)
+                val h = ((bottom - top) * scaleY).toInt().coerceIn(1, current.height - t)
+                Bitmap.createBitmap(current, l, t, w, h)
             }
             _originalBitmap.value = cropped
-            applyEdits()
+            _previewBitmap.value = cropped
+            _isLoading.value = false
+        }
+    }
+
+    fun cropByRatio(ratio: Float, canvasW: Int, canvasH: Int) {
+        val current = _originalBitmap.value ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            val cropped = withContext(Dispatchers.IO) {
+                val bmpW = current.width.toFloat()
+                val bmpH = current.height.toFloat()
+                val currentRatio = bmpW / bmpH
+                val left: Int; val top: Int; val width: Int; val height: Int
+                if (currentRatio > ratio) {
+                    height = current.height
+                    width = (height * ratio).toInt()
+                    left = ((bmpW - width) / 2).toInt()
+                    top = 0
+                } else {
+                    width = current.width
+                    height = (width / ratio).toInt()
+                    left = 0
+                    top = ((bmpH - height) / 2).toInt()
+                }
+                Bitmap.createBitmap(current, left.coerceAtLeast(0), top.coerceAtLeast(0),
+                    width.coerceAtMost(current.width - left.coerceAtLeast(0)),
+                    height.coerceAtMost(current.height - top.coerceAtLeast(0)))
+            }
+            _originalBitmap.value = cropped
+            _previewBitmap.value = cropped
+            _isLoading.value = false
         }
     }
 
@@ -134,9 +165,8 @@ class ImageEditorViewModel @Inject constructor(
         if (totalRotation != 0f) matrix.postRotate(totalRotation)
         if (p.flipH) matrix.preScale(-1f, 1f)
         if (p.flipV) matrix.preScale(1f, -1f)
-        if (totalRotation != 0f || p.flipH || p.flipV) {
+        if (totalRotation != 0f || p.flipH || p.flipV)
             bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-        }
         val cm = ColorMatrix()
         cm.postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,p.brightness*255f, 0f,1f,0f,0f,p.brightness*255f, 0f,0f,1f,0f,p.brightness*255f, 0f,0f,0f,1f,0f)))
         cm.postConcat(ColorMatrix(floatArrayOf(p.contrast,0f,0f,0f,128f*(1f-p.contrast), 0f,p.contrast,0f,0f,128f*(1f-p.contrast), 0f,0f,p.contrast,0f,128f*(1f-p.contrast), 0f,0f,0f,1f,0f)))
@@ -149,14 +179,17 @@ class ImageEditorViewModel @Inject constructor(
         canvas.drawBitmap(bmp, 0f, 0f, paint)
         if (p.vignette > 0f) {
             val vp = Paint(Paint.ANTI_ALIAS_FLAG)
-            vp.shader = RadialGradient(result.width/2f, result.height/2f, maxOf(result.width,result.height)/1.5f, intArrayOf(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb((p.vignette*180).toInt(),0,0,0)), null, Shader.TileMode.CLAMP)
+            vp.shader = RadialGradient(result.width/2f, result.height/2f, maxOf(result.width,result.height)/1.5f,
+                intArrayOf(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb((p.vignette*180).toInt(),0,0,0)),
+                null, Shader.TileMode.CLAMP)
             canvas.drawRect(0f,0f,result.width.toFloat(),result.height.toFloat(),vp)
         }
         if (p.grain > 0f) {
             val gp = Paint().apply { alpha = (p.grain*60).toInt() }
             val rnd = java.util.Random()
-            for (x in 0 until result.width step 2) for (y in 0 until result.height step 2) {
-                val n = rnd.nextInt(255); gp.color = android.graphics.Color.rgb(n,n,n); canvas.drawPoint(x.toFloat(),y.toFloat(),gp)
+            for (x in 0 until result.width step 3) for (y in 0 until result.height step 3) {
+                val n = rnd.nextInt(255); gp.color = android.graphics.Color.rgb(n,n,n)
+                canvas.drawPoint(x.toFloat(),y.toFloat(),gp)
             }
         }
         return result
@@ -194,18 +227,23 @@ fun ImageEditorScreen(
 ) {
     val path = URLDecoder.decode(encodedPath, "UTF-8")
     LaunchedEffect(path) { viewModel.loadImage(path) }
+
     val bitmap by viewModel.previewBitmap.collectAsState()
     val params by viewModel.editParams.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val savedPath by viewModel.savedPath.collectAsState()
+
     var activeTab by remember { mutableStateOf(EditTab.ADJUST) }
     var isCropMode by remember { mutableStateOf(false) }
     var selectedRatio by remember { mutableStateOf(CropRatio.FREE) }
-    var cropRect by remember { mutableStateOf<Rect?>(null) }
-    var dragStart by remember { mutableStateOf(Offset.Zero) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    var cropStart by remember { mutableStateOf(Offset.Zero) }
+    var cropEnd by remember { mutableStateOf(Offset.Zero) }
+    var isCropDrawn by remember { mutableStateOf(false) }
     var showSaved by remember { mutableStateOf(false) }
-    LaunchedEffect(savedPath) { if (savedPath != null) showSaved = true }
+
+    LaunchedEffect(savedPath) { if (savedPath != null) { showSaved = true } }
+    LaunchedEffect(activeTab) { isCropMode = activeTab == EditTab.CROP; isCropDrawn = false }
 
     Scaffold(
         topBar = {
@@ -213,7 +251,7 @@ fun ImageEditorScreen(
                 title = { Text("Edit Foto", color = Color.White) },
                 navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } },
                 actions = {
-                    TextButton(onClick = { viewModel.resetEdits() }) { Text("Reset", color = Color.White.copy(alpha = 0.7f)) }
+                    TextButton(onClick = { viewModel.resetEdits(); isCropDrawn = false }) { Text("Reset", color = Color.White.copy(alpha = 0.7f)) }
                     TextButton(onClick = { viewModel.save() }) { Text("Simpan", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A1A1A))
@@ -222,53 +260,130 @@ fun ImageEditorScreen(
         containerColor = Color.Black
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
                 if (bitmap != null) {
                     if (isCropMode) {
-                        Canvas(modifier = Modifier.fillMaxSize().onGloballyPositioned { canvasSize = it.size }.pointerInput(Unit) {
-                            detectDragGestures(
-                                onDragStart = { dragStart = it; cropRect = null },
-                                onDrag = { _, drag -> cropRect = cropRect?.let { Rect(it.left,it.top,it.right+drag.x,it.bottom+drag.y) } ?: Rect(dragStart, dragStart+drag) }
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .onGloballyPositioned { canvasSize = it.size }
+                                .pointerInput(Unit) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            cropStart = offset
+                                            cropEnd = offset
+                                            isCropDrawn = false
+                                        },
+                                        onDrag = { _, dragAmount ->
+                                            cropEnd = Offset(
+                                                (cropEnd.x + dragAmount.x).coerceIn(0f, canvasSize.width.toFloat()),
+                                                (cropEnd.y + dragAmount.y).coerceIn(0f, canvasSize.height.toFloat())
+                                            )
+                                            isCropDrawn = true
+                                        }
+                                    )
+                                }
+                        ) {
+                            drawImage(
+                                bitmap!!.asImageBitmap(),
+                                dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())
                             )
-                        }) {
-                            drawImage(bitmap!!.asImageBitmap(), dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()))
-                            drawRect(color = Color.Black.copy(alpha = 0.5f), size = size)
-                            cropRect?.let { r ->
-                                val safe = Rect(r.left.coerceIn(0f,size.width),r.top.coerceIn(0f,size.height),r.right.coerceIn(0f,size.width),r.bottom.coerceIn(0f,size.height))
-                                drawRect(color = Color.Transparent, topLeft = safe.topLeft, size = safe.size, blendMode = BlendMode.Clear)
-                                drawRect(color = Color.White, topLeft = safe.topLeft, size = safe.size, style = Stroke(2.dp.toPx()))
-                                listOf(safe.topLeft,safe.topRight,safe.bottomLeft,safe.bottomRight).forEach { drawCircle(Color.White,8.dp.toPx(),it) }
+                            if (isCropDrawn) {
+                                val left = minOf(cropStart.x, cropEnd.x)
+                                val top = minOf(cropStart.y, cropEnd.y)
+                                val right = maxOf(cropStart.x, cropEnd.x)
+                                val bottom = maxOf(cropStart.y, cropEnd.y)
+                                drawRect(color = Color.Black.copy(alpha = 0.5f), size = size)
+                                drawRect(
+                                    color = Color.Transparent,
+                                    topLeft = Offset(left, top),
+                                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                                    blendMode = BlendMode.Clear
+                                )
+                                drawRect(
+                                    color = Color.White,
+                                    topLeft = Offset(left, top),
+                                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                                    style = Stroke(3.dp.toPx())
+                                )
+                                listOf(Offset(left,top), Offset(right,top), Offset(left,bottom), Offset(right,bottom)).forEach {
+                                    drawCircle(Color.White, 8.dp.toPx(), it)
+                                }
                             }
                         }
                     } else {
-                        AsyncImage(model = bitmap, contentDescription = null, contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = params.straighten))
+                        AsyncImage(
+                            model = bitmap,
+                            contentDescription = null,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = params.straighten)
+                        )
                     }
                 }
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                if (isLoading) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFF4CAF50))
                 if (showSaved) {
-                    Box(modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp).background(Color(0xFF4CAF50), RoundedCornerShape(8.dp)).padding(horizontal=20.dp,vertical=10.dp)) {
-                        Text("✓ Foto disimpan", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
+                    Box(
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+                            .background(Color(0xFF4CAF50), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                    ) { Text("✓ Foto disimpan", color = Color.White, fontWeight = FontWeight.Bold) }
                     LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); showSaved = false }
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF111111)), horizontalArrangement = Arrangement.SpaceEvenly) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF111111)),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 EditTab.values().forEach { tab ->
-                    TextButton(onClick = { activeTab = tab; isCropMode = tab == EditTab.CROP }) {
-                        Text(when(tab){EditTab.CROP->"Crop & Putar";EditTab.ADJUST->"Adjust";EditTab.EFFECTS->"Efek"},
-                            color = if(activeTab==tab) Color(0xFF4CAF50) else Color.White.copy(alpha=0.6f),
-                            fontWeight = if(activeTab==tab) FontWeight.Bold else FontWeight.Normal, fontSize=13.sp)
+                    TextButton(onClick = { activeTab = tab }) {
+                        Text(
+                            when (tab) { EditTab.CROP -> "Crop & Putar"; EditTab.ADJUST -> "Adjust"; EditTab.EFFECTS -> "Efek" },
+                            color = if (activeTab == tab) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.6f),
+                            fontWeight = if (activeTab == tab) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A)).padding(bottom=16.dp)) {
+
+            Box(
+                modifier = Modifier.fillMaxWidth().background(Color(0xFF1A1A1A)).padding(bottom = 16.dp)
+            ) {
                 when (activeTab) {
-                    EditTab.CROP -> CropPanel(params=params, selectedRatio=selectedRatio, cropRect=cropRect, canvasSize=canvasSize, onRatioSelected={selectedRatio=it},
-                        onCrop={ cropRect?.let { viewModel.crop(it, bitmap!!.let{b->IntSize(b.width,b.height)}, canvasSize) }; cropRect=null },
-                        onRotate={viewModel.rotate(it)}, onFlipH={viewModel.flipH()}, onFlipV={viewModel.flipV()}, onStraighten={viewModel.straighten(it)})
-                    EditTab.ADJUST -> AdjustPanel(params=params, onUpdate={viewModel.updateParam(it)})
-                    EditTab.EFFECTS -> EffectsPanel(params=params, onUpdate={viewModel.updateParam(it)})
+                    EditTab.CROP -> CropPanel(
+                        params = params,
+                        selectedRatio = selectedRatio,
+                        isCropDrawn = isCropDrawn,
+                        onRatioSelected = { ratio ->
+                            selectedRatio = ratio
+                            isCropDrawn = false
+                            if (ratio.ratio != null && canvasSize != IntSize.Zero) {
+                                viewModel.cropByRatio(ratio.ratio, canvasSize.width, canvasSize.height)
+                            }
+                        },
+                        onCrop = {
+                            if (isCropDrawn && canvasSize != IntSize.Zero) {
+                                val left = minOf(cropStart.x, cropEnd.x)
+                                val top = minOf(cropStart.y, cropEnd.y)
+                                val right = maxOf(cropStart.x, cropEnd.x)
+                                val bottom = maxOf(cropStart.y, cropEnd.y)
+                                if (right - left > 10 && bottom - top > 10) {
+                                    viewModel.cropByRect(left, top, right, bottom, canvasSize.width, canvasSize.height)
+                                    isCropDrawn = false
+                                }
+                            }
+                        },
+                        onRotate = { viewModel.rotate(it) },
+                        onFlipH = { viewModel.flipH() },
+                        onFlipV = { viewModel.flipV() },
+                        onStraighten = { viewModel.straighten(it) }
+                    )
+                    EditTab.ADJUST -> AdjustPanel(params = params, onUpdate = { viewModel.updateParam(it) })
+                    EditTab.EFFECTS -> EffectsPanel(params = params, onUpdate = { viewModel.updateParam(it) })
                 }
             }
         }
@@ -276,72 +391,117 @@ fun ImageEditorScreen(
 }
 
 @Composable
-fun CropPanel(params: EditParams, selectedRatio: CropRatio, cropRect: Rect?, canvasSize: IntSize,
-    onRatioSelected:(CropRatio)->Unit, onCrop:(Rect?)->Unit, onRotate:(Float)->Unit, onFlipH:()->Unit, onFlipV:()->Unit, onStraighten:(Float)->Unit) {
-    Column(modifier=Modifier.padding(8.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Row(modifier=Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+fun CropPanel(
+    params: EditParams,
+    selectedRatio: CropRatio,
+    isCropDrawn: Boolean,
+    onRatioSelected: (CropRatio) -> Unit,
+    onCrop: () -> Unit,
+    onRotate: (Float) -> Unit,
+    onFlipH: () -> Unit,
+    onFlipV: () -> Unit,
+    onStraighten: (Float) -> Unit
+) {
+    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             CropRatio.values().forEach { ratio ->
-                Box(modifier=Modifier.clip(RoundedCornerShape(6.dp)).background(if(selectedRatio==ratio) Color(0xFF4CAF50) else Color(0xFF2A2A2A)).clickable{onRatioSelected(ratio)}.padding(horizontal=12.dp,vertical=6.dp)) {
-                    Text(ratio.label, color=Color.White, fontSize=12.sp)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (selectedRatio == ratio) Color(0xFF4CAF50) else Color(0xFF2A2A2A))
+                        .clickable { onRatioSelected(ratio) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) { Text(ratio.label, color = Color.White, fontSize = 13.sp, fontWeight = if (selectedRatio == ratio) FontWeight.Bold else FontWeight.Normal) }
+            }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            EditorActionBtn(Icons.Default.RotateLeft, "Putar Kiri") { onRotate(-90f) }
+            EditorActionBtn(Icons.Default.RotateRight, "Putar Kanan") { onRotate(90f) }
+            EditorActionBtn(Icons.Default.Flip, "Balik H") { onFlipH() }
+            EditorActionBtn(Icons.Default.Flip, "Balik V") { onFlipV() }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(
+                        if (isCropDrawn) Color(0xFF4CAF50) else Color(0xFF2A2A2A),
+                        CircleShape
+                    )
+                    .clickable { onCrop() },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Crop, null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
         }
-        Row(modifier=Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceEvenly) {
-            EditorActionBtn(Icons.Default.RotateLeft,"Putar Kiri"){onRotate(-90f)}
-            EditorActionBtn(Icons.Default.RotateRight,"Putar Kanan"){onRotate(90f)}
-            EditorActionBtn(Icons.Default.Flip,"Balik H"){onFlipH()}
-            EditorActionBtn(Icons.Default.Flip,"Balik V"){onFlipV()}
-            EditorActionBtn(Icons.Default.Crop,"Potong"){onCrop(cropRect)}
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Text(
+                if (isCropDrawn) "Tap Potong untuk memotong area yang dipilih" else "Seret pada gambar untuk memilih area",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 11.sp
+            )
         }
-        Column(modifier=Modifier.padding(horizontal=8.dp)) {
-            Text("Luruskan: ${params.straighten.toInt()}°", color=Color.White.copy(alpha=0.8f), fontSize=12.sp)
-            Slider(value=params.straighten, onValueChange=onStraighten, valueRange=-45f..45f,
-                colors=SliderDefaults.colors(thumbColor=Color(0xFF4CAF50), activeTrackColor=Color(0xFF4CAF50)))
+        Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text("Luruskan: ${params.straighten.toInt()}°", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+            Slider(
+                value = params.straighten,
+                onValueChange = onStraighten,
+                valueRange = -45f..45f,
+                colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50))
+            )
         }
     }
 }
 
 @Composable
-fun AdjustPanel(params: EditParams, onUpdate:(EditParams.()->EditParams)->Unit) {
-    Column(modifier=Modifier.padding(horizontal=16.dp), verticalArrangement=Arrangement.spacedBy(2.dp)) {
-        AdjustSlider("Kecerahan", params.brightness, -1f..1f){onUpdate{copy(brightness=it)}}
-        AdjustSlider("Kontras", params.contrast-1f, -1f..1f){onUpdate{copy(contrast=1f+it)}}
-        AdjustSlider("Saturasi", params.saturation-1f, -1f..1f){onUpdate{copy(saturation=1f+it)}}
-        AdjustSlider("Highlight", params.highlights, -1f..1f){onUpdate{copy(highlights=it)}}
-        AdjustSlider("Shadow", params.shadows, -1f..1f){onUpdate{copy(shadows=it)}}
-        AdjustSlider("Suhu Warna", params.temperature, -1f..1f){onUpdate{copy(temperature=it)}}
-        AdjustSlider("Ketajaman", params.sharpness, 0f..1f){onUpdate{copy(sharpness=it)}}
-        AdjustSlider("Clarity", params.clarity, 0f..1f){onUpdate{copy(clarity=it)}}
+fun AdjustPanel(params: EditParams, onUpdate: (EditParams.() -> EditParams) -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        AdjustSlider("Kecerahan", params.brightness, -1f..1f) { onUpdate { copy(brightness = it) } }
+        AdjustSlider("Kontras", params.contrast - 1f, -1f..1f) { onUpdate { copy(contrast = 1f + it) } }
+        AdjustSlider("Saturasi", params.saturation - 1f, -1f..1f) { onUpdate { copy(saturation = 1f + it) } }
+        AdjustSlider("Highlight", params.highlights, -1f..1f) { onUpdate { copy(highlights = it) } }
+        AdjustSlider("Shadow", params.shadows, -1f..1f) { onUpdate { copy(shadows = it) } }
+        AdjustSlider("Suhu Warna", params.temperature, -1f..1f) { onUpdate { copy(temperature = it) } }
+        AdjustSlider("Ketajaman", params.sharpness, 0f..1f) { onUpdate { copy(sharpness = it) } }
+        AdjustSlider("Clarity", params.clarity, 0f..1f) { onUpdate { copy(clarity = it) } }
     }
 }
 
 @Composable
-fun EffectsPanel(params: EditParams, onUpdate:(EditParams.()->EditParams)->Unit) {
-    Column(modifier=Modifier.padding(horizontal=16.dp), verticalArrangement=Arrangement.spacedBy(2.dp)) {
-        AdjustSlider("Vignette", params.vignette, 0f..1f){onUpdate{copy(vignette=it)}}
-        AdjustSlider("Grain / Noise", params.grain, 0f..1f){onUpdate{copy(grain=it)}}
+fun EffectsPanel(params: EditParams, onUpdate: (EditParams.() -> EditParams) -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        AdjustSlider("Vignette", params.vignette, 0f..1f) { onUpdate { copy(vignette = it) } }
+        AdjustSlider("Grain / Noise", params.grain, 0f..1f) { onUpdate { copy(grain = it) } }
     }
 }
 
 @Composable
-fun AdjustSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange:(Float)->Unit) {
+fun AdjustSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     Column {
-        Row(modifier=Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
-            Text(label, color=Color.White.copy(alpha=0.8f), fontSize=12.sp)
-            Text("%.2f".format(value), color=Color(0xFF4CAF50), fontSize=12.sp)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+            Text("%.2f".format(value), color = Color(0xFF4CAF50), fontSize = 12.sp)
         }
-        Slider(value=value.coerceIn(range), onValueChange=onChange, valueRange=range,
-            colors=SliderDefaults.colors(thumbColor=Color(0xFF4CAF50), activeTrackColor=Color(0xFF4CAF50)),
-            modifier=Modifier.height(32.dp))
+        Slider(
+            value = value.coerceIn(range),
+            onValueChange = onChange,
+            valueRange = range,
+            colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50)),
+            modifier = Modifier.height(32.dp)
+        )
     }
 }
 
 @Composable
-fun EditorActionBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick:()->Unit) {
-    Column(horizontalAlignment=Alignment.CenterHorizontally) {
-        IconButton(onClick=onClick, modifier=Modifier.size(44.dp).background(Color(0xFF2A2A2A), CircleShape)) {
-            Icon(icon, null, tint=Color.White, modifier=Modifier.size(20.dp))
-        }
-        Text(label, color=Color.White.copy(alpha=0.6f), fontSize=9.sp)
+fun EditorActionBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.size(44.dp).background(Color(0xFF2A2A2A), CircleShape)
+        ) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+        Text(label, color = Color.White.copy(alpha = 0.6f), fontSize = 9.sp)
     }
 }
