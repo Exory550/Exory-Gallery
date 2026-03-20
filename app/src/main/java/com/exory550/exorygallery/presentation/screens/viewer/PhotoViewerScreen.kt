@@ -26,8 +26,6 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.navigation.Screen
-import com.exory550.exorygallery.presentation.screens.viewer.PhotoPropertiesSheet
-import com.exory550.exorygallery.presentation.screens.viewer.PhotoMenuSheet
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLDecoder
@@ -52,13 +50,9 @@ fun PhotoViewerScreen(
     var showProperties by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showCopyDialog by remember { mutableStateOf(false) }
-    var showMoveDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
-    var folderInputText by remember { mutableStateOf("") }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     val snackbarState = remember { SnackbarHostState() }
-
     val currentPath = photos.getOrElse(pagerState.currentPage) { initialPath }
 
     LaunchedEffect(snackbarMsg) {
@@ -100,7 +94,7 @@ fun PhotoViewerScreen(
                 TextButton(onClick = {
                     scope.launch {
                         val newPath = PhotoActionsHelper.renameFile(currentPath, renameText)
-                        snackbarMsg = if (newPath != null) "Nama diubah" else "Gagal mengubah nama"
+                        snackbarMsg = if (newPath != null) "Nama diubah" else "Gagal"
                         showRenameDialog = false
                     }
                 }) { Text("Simpan") }
@@ -109,67 +103,30 @@ fun PhotoViewerScreen(
         )
     }
 
-    if (showCopyDialog) {
-        AlertDialog(
-            onDismissRequest = { showCopyDialog = false },
-            title = { Text("Salin ke Folder") },
-            text = {
-                OutlinedTextField(value = folderInputText, onValueChange = { folderInputText = it }, singleLine = true, label = { Text("Path folder tujuan") })
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val result = PhotoActionsHelper.copyFile(currentPath, folderInputText)
-                        snackbarMsg = if (result != null) "Berhasil disalin ke $folderInputText" else "Gagal menyalin"
-                        showCopyDialog = false
-                    }
-                }) { Text("Salin") }
-            },
-            dismissButton = { TextButton(onClick = { showCopyDialog = false }) { Text("Batal") } }
-        )
-    }
-
-    if (showMoveDialog) {
-        AlertDialog(
-            onDismissRequest = { showMoveDialog = false },
-            title = { Text("Pindah ke Folder") },
-            text = {
-                OutlinedTextField(value = folderInputText, onValueChange = { folderInputText = it }, singleLine = true, label = { Text("Path folder tujuan") })
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val result = PhotoActionsHelper.moveFile(currentPath, folderInputText)
-                        snackbarMsg = if (result != null) "Berhasil dipindah" else "Gagal memindah"
-                        showMoveDialog = false
-                        if (result != null && photos.size == 1) navController.popBackStack()
-                    }
-                }) { Text("Pindah") }
-            },
-            dismissButton = { TextButton(onClick = { showMoveDialog = false }) { Text("Batal") } }
-        )
-    }
-
     if (showMenu) {
         PhotoMenuSheet(
             path = currentPath,
             context = context,
             onDismiss = { showMenu = false },
-            onRotate = {
-                scope.launch {
-                    snackbarMsg = "Rotasi disimpan"
-                }
-            },
+            onRotate = { snackbarMsg = "Gunakan fitur Edit untuk rotasi" },
             onProperties = { showProperties = true },
             onRename = { renameText = File(currentPath).nameWithoutExtension; showRenameDialog = true },
             onHide = {
                 scope.launch {
                     val ok = PhotoActionsHelper.hideFile(currentPath)
-                    snackbarMsg = if (ok) "File disembunyikan" else "Gagal menyembunyikan"
+                    snackbarMsg = if (ok) "File disembunyikan" else "Gagal"
                 }
             },
-            onCopyTo = { folderInputText = File(currentPath).parent ?: ""; showCopyDialog = true },
-            onMoveTo = { folderInputText = ""; showMoveDialog = true },
+            onCopyTo = {
+                navController.navigate(
+                    Screen.FolderPicker.createRoute("copy", java.net.URLEncoder.encode(currentPath, "UTF-8"))
+                )
+            },
+            onMoveTo = {
+                navController.navigate(
+                    Screen.FolderPicker.createRoute("move", java.net.URLEncoder.encode(currentPath, "UTF-8"))
+                )
+            },
             onEdit = { navController.navigate(Screen.ImageEditor.createRoute(currentPath)) },
             onShare = { PhotoActionsHelper.shareFile(context, currentPath) },
             onOpenWith = { PhotoActionsHelper.openWith(context, currentPath) },
@@ -216,7 +173,9 @@ fun PhotoViewerScreen(
                     BottomAction(Icons.Default.Tune, "Edit") { navController.navigate(Screen.ImageEditor.createRoute(currentPath)) }
                     BottomAction(Icons.Default.Share, "Bagikan") { PhotoActionsHelper.shareFile(context, currentPath) }
                     BottomAction(Icons.Default.Info, "Properti") { showProperties = true }
-                    BottomAction(Icons.Default.DriveFileMove, "Pindah") { folderInputText = ""; showMoveDialog = true }
+                    BottomAction(Icons.Default.DriveFileMove, "Pindah") {
+                        navController.navigate(Screen.FolderPicker.createRoute("move", java.net.URLEncoder.encode(currentPath, "UTF-8")))
+                    }
                     BottomAction(Icons.Default.Delete, "Hapus") { showDeleteConfirm = true }
                 }
             }
@@ -226,10 +185,7 @@ fun PhotoViewerScreen(
 
 @Composable
 fun BottomAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = 8.dp).clickable { onClick() }
-    ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp).clickable { onClick() }) {
         Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
         Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
     }

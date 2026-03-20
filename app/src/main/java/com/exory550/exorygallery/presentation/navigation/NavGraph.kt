@@ -7,11 +7,13 @@ import androidx.navigation.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.exory550.exorygallery.presentation.screens.albums.AlbumsScreen
+import com.exory550.exorygallery.presentation.screens.editor.ImageEditorScreen
 import com.exory550.exorygallery.presentation.screens.folder.FolderContentScreen
 import com.exory550.exorygallery.presentation.screens.gallery.GalleryScreen
 import com.exory550.exorygallery.presentation.screens.main.MainScreen
 import com.exory550.exorygallery.presentation.screens.map.MapScreen
 import com.exory550.exorygallery.presentation.screens.media.MediaViewerScreen
+import com.exory550.exorygallery.presentation.screens.picker.FolderPickerScreen
 import com.exory550.exorygallery.presentation.screens.search.SearchScreen
 import com.exory550.exorygallery.presentation.screens.settings.SettingsScreen
 import com.exory550.exorygallery.presentation.screens.splash.SplashScreen
@@ -22,7 +24,10 @@ import com.exory550.exorygallery.presentation.screens.vault.VaultScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultUnlockScreen
 import com.exory550.exorygallery.presentation.screens.video.VideoPlayerScreen
 import com.exory550.exorygallery.presentation.screens.viewer.PhotoViewerScreen
-import com.exory550.exorygallery.presentation.screens.editor.ImageEditorScreen
+import com.exory550.exorygallery.presentation.screens.viewer.PhotoActionsHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -42,8 +47,18 @@ sealed class Screen(val route: String) {
     object PhotoViewer : Screen("photo/{photoPath}") {
         fun createRoute(photoPath: String) = "photo/${URLEncoder.encode(photoPath, "UTF-8")}"
     }
+    object PhotoPager : Screen("photo_pager/{photoPath}?all={all}") {
+        fun createRoute(photoPath: String, allEncoded: String = "") =
+            "photo_pager/${URLEncoder.encode(photoPath, "UTF-8")}?all=$allEncoded"
+    }
     object VideoPlayer : Screen("video/{videoPath}") {
         fun createRoute(videoPath: String) = "video/${URLEncoder.encode(videoPath, "UTF-8")}"
+    }
+    object ImageEditor : Screen("editor/{imagePath}") {
+        fun createRoute(path: String) = "editor/${URLEncoder.encode(path, "UTF-8")}"
+    }
+    object FolderPicker : Screen("folder_picker/{action}/{filePath}") {
+        fun createRoute(action: String, encodedFilePath: String) = "folder_picker/$action/$encodedFilePath"
     }
     object Map : Screen("map")
     object Search : Screen("search")
@@ -52,9 +67,6 @@ sealed class Screen(val route: String) {
     object Cleanup : Screen("cleanup")
     object Converter : Screen("converter")
     object Settings : Screen("settings")
-    object ImageEditor : Screen("editor/{imagePath}") {
-        fun createRoute(path: String) = "editor/${java.net.URLEncoder.encode(path, "UTF-8")}"
-    }
     object Statistics : Screen("statistics")
 }
 
@@ -97,7 +109,7 @@ fun ExoryNavGraph(navController: NavHostController) {
             PhotoViewerScreen(navController, back.arguments?.getString("photoPath") ?: "")
         }
         composable(
-            route = "photo_pager/{photoPath}?all={all}",
+            route = Screen.PhotoPager.route,
             arguments = listOf(
                 navArgument("photoPath") { type = NavType.StringType },
                 navArgument("all") { type = NavType.StringType; defaultValue = "" }
@@ -105,9 +117,7 @@ fun ExoryNavGraph(navController: NavHostController) {
         ) { back ->
             val encodedPath = back.arguments?.getString("photoPath") ?: ""
             val allEncoded = back.arguments?.getString("all") ?: ""
-            val allPhotos = if (allEncoded.isNotBlank()) {
-                allEncoded.split(",").map { URLDecoder.decode(it, "UTF-8") }
-            } else emptyList()
+            val allPhotos = if (allEncoded.isNotBlank()) allEncoded.split(",").map { URLDecoder.decode(it, "UTF-8") } else emptyList()
             PhotoViewerScreen(navController, encodedPath, allPhotos)
         }
         composable(
@@ -115,6 +125,38 @@ fun ExoryNavGraph(navController: NavHostController) {
             arguments = listOf(navArgument("videoPath") { type = NavType.StringType })
         ) { back ->
             VideoPlayerScreen(navController, back.arguments?.getString("videoPath") ?: "")
+        }
+        composable(
+            route = Screen.ImageEditor.route,
+            arguments = listOf(navArgument("imagePath") { type = NavType.StringType })
+        ) { back ->
+            ImageEditorScreen(navController, back.arguments?.getString("imagePath") ?: "")
+        }
+        composable(
+            route = Screen.FolderPicker.route,
+            arguments = listOf(
+                navArgument("action") { type = NavType.StringType },
+                navArgument("filePath") { type = NavType.StringType }
+            )
+        ) { back ->
+            val action = back.arguments?.getString("action") ?: "copy"
+            val encodedFilePath = back.arguments?.getString("filePath") ?: ""
+            val filePath = URLDecoder.decode(encodedFilePath, "UTF-8")
+            val title = if (action == "move") "Pindah ke" else "Salin ke"
+            FolderPickerScreen(
+                navController = navController,
+                title = title,
+                onFolderSelected = { destFolder ->
+                    CoroutineScope(Dispatchers.IO).launch {
+                        if (action == "move") {
+                            PhotoActionsHelper.moveFile(filePath, destFolder)
+                        } else {
+                            PhotoActionsHelper.copyFile(filePath, destFolder)
+                        }
+                    }
+                    navController.popBackStack()
+                }
+            )
         }
         composable(Screen.Map.route) { MapScreen(navController) }
         composable(Screen.Search.route) { SearchScreen(navController) }
@@ -124,11 +166,5 @@ fun ExoryNavGraph(navController: NavHostController) {
         composable(Screen.Converter.route) { ConverterScreen(navController) }
         composable(Screen.Settings.route) { SettingsScreen(navController) }
         composable(Screen.Statistics.route) { StatisticsScreen(navController) }
-        composable(
-            route = Screen.ImageEditor.route,
-            arguments = listOf(navArgument("imagePath") { type = NavType.StringType })
-        ) { back ->
-            ImageEditorScreen(navController, back.arguments?.getString("imagePath") ?: "")
-        }
     }
 }
