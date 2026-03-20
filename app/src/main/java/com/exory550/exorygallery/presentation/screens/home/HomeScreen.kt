@@ -68,26 +68,10 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                         Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("Grid 2") },
-                            onClick = { viewModel.setViewMode(ViewMode.GRID_2); gridColumns = 2; showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.ViewModule, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Grid 3") },
-                            onClick = { viewModel.setViewMode(ViewMode.GRID_3); gridColumns = 3; showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.ViewModule, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Grid 4") },
-                            onClick = { viewModel.setViewMode(ViewMode.GRID_4); gridColumns = 4; showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.ViewComfy, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Timeline") },
-                            onClick = { viewModel.setViewMode(ViewMode.TIMELINE); showMenu = false },
-                            leadingIcon = { Icon(Icons.Default.ViewAgenda, null) }
-                        )
+                        DropdownMenuItem(text = { Text("Grid 2") }, onClick = { viewModel.setViewMode(ViewMode.GRID_2); gridColumns = 2; showMenu = false }, leadingIcon = { Icon(Icons.Default.ViewModule, null) })
+                        DropdownMenuItem(text = { Text("Grid 3") }, onClick = { viewModel.setViewMode(ViewMode.GRID_3); gridColumns = 3; showMenu = false }, leadingIcon = { Icon(Icons.Default.ViewModule, null) })
+                        DropdownMenuItem(text = { Text("Grid 4") }, onClick = { viewModel.setViewMode(ViewMode.GRID_4); gridColumns = 4; showMenu = false }, leadingIcon = { Icon(Icons.Default.ViewComfy, null) })
+                        DropdownMenuItem(text = { Text("Timeline") }, onClick = { viewModel.setViewMode(ViewMode.TIMELINE); showMenu = false }, leadingIcon = { Icon(Icons.Default.ViewAgenda, null) })
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -182,11 +166,43 @@ fun FolderCard(folder: MediaFolder, onClick: () -> Unit) {
             .clip(RoundedCornerShape(8.dp))
             .clickable { onClick() }
     ) {
-        AsyncImage(model = folder.coverUri, contentDescription = folder.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)) {
-            Text(text = folder.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${folder.count}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+        AsyncImage(
+            model = folder.coverUri,
+            contentDescription = folder.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+
+        if (folder.hasVideo) {
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .size(36.dp)
+                    .align(Alignment.Center)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp)
+        ) {
+            Text(
+                text = folder.name,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${folder.count}",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 11.sp
+            )
         }
     }
 }
