@@ -15,11 +15,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
-data class MediaFolder(val name: String, val path: String, val coverUri: String, val count: Int)
 
-data class TimelineGroup(val label: String, val photos: List<String>)
 
-enum class ViewMode { GRID_2, GRID_3, GRID_4, TIMELINE }
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -54,9 +51,15 @@ class HomeViewModel @Inject constructor(
     private suspend fun scanFolders(cr: ContentResolver): List<MediaFolder> {
         return withContext(Dispatchers.IO) {
             val map = mutableMapOf<String, Triple<String, String, Int>>()
-            val projection = arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
-            val cursor = cr.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")
-            cursor?.use {
+            val videoFolders = mutableSetOf<String>()
+
+            val imgCursor = cr.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME),
+                null, null,
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )
+            imgCursor?.use {
                 val dataCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val bucketCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
                 while (it.moveToNext()) {
@@ -68,15 +71,42 @@ class HomeViewModel @Inject constructor(
                     else existing.copy(third = existing.third + 1)
                 }
             }
-            map.map { (fp, v) -> MediaFolder(v.first, fp, v.second, v.third) }.sortedByDescending { it.count }
+
+            val vidCursor = cr.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME),
+                null, null,
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )
+            vidCursor?.use {
+                val dataCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+                val bucketCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+                while (it.moveToNext()) {
+                    val path = it.getString(dataCol) ?: continue
+                    val bucket = it.getString(bucketCol) ?: "Lainnya"
+                    val folderPath = File(path).parent ?: continue
+                    videoFolders.add(folderPath)
+                    val existing = map[folderPath]
+                    map[folderPath] = if (existing == null) Triple(bucket, path, 1)
+                    else existing.copy(third = existing.third + 1)
+                }
+            }
+
+            map.map { (fp, v) ->
+                MediaFolder(v.first, fp, v.second, v.third, videoFolders.contains(fp))
+            }.sortedByDescending { it.count }
         }
     }
 
     private suspend fun buildTimeline(cr: ContentResolver): List<TimelineGroup> {
         return withContext(Dispatchers.IO) {
             val map = mutableMapOf<String, MutableList<String>>()
-            val projection = arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.DATE_TAKEN)
-            val cursor = cr.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, "${MediaStore.MediaColumns.DATE_TAKEN} DESC")
+            val cursor = cr.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.DATE_TAKEN),
+                null, null,
+                "${MediaStore.MediaColumns.DATE_TAKEN} DESC"
+            )
             cursor?.use {
                 val dataCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 val dateCol = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
