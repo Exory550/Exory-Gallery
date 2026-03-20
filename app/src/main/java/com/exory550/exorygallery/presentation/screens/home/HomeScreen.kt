@@ -32,6 +32,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.components.LoadingDialog
+import com.exory550.exorygallery.presentation.screens.home.MediaFolder
+import com.exory550.exorygallery.presentation.screens.home.ViewMode
 import com.exory550.exorygallery.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
