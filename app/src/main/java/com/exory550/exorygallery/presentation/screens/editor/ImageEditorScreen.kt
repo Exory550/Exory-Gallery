@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -39,6 +38,8 @@ import coil.compose.AsyncImage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -79,6 +80,7 @@ class ImageEditorViewModel @Inject constructor(
     private val _savedPath = MutableStateFlow<String?>(null)
     val savedPath: StateFlow<String?> = _savedPath
     private var originalPath = ""
+    private var applyJob: Job? = null
 
     fun loadImage(path: String) {
         originalPath = path
@@ -93,12 +95,21 @@ class ImageEditorViewModel @Inject constructor(
 
     fun updateParam(update: EditParams.() -> EditParams) {
         _editParams.value = _editParams.value.update()
+        applyJob?.cancel()
+        applyJob = viewModelScope.launch {
+            delay(80)
+            applyEdits()
+        }
+    }
+
+    fun updateParamImmediate(update: EditParams.() -> EditParams) {
+        _editParams.value = _editParams.value.update()
         applyEdits()
     }
 
-    fun rotate(degrees: Float) { updateParam { copy(rotation = (rotation + degrees) % 360f) } }
-    fun flipH() { updateParam { copy(flipH = !flipH) } }
-    fun flipV() { updateParam { copy(flipV = !flipV) } }
+    fun rotate(degrees: Float) { updateParamImmediate { copy(rotation = (rotation + degrees) % 360f) } }
+    fun flipH() { updateParamImmediate { copy(flipH = !flipH) } }
+    fun flipV() { updateParamImmediate { copy(flipV = !flipV) } }
     fun straighten(angle: Float) { updateParam { copy(straighten = angle) } }
 
     fun cropByRect(left: Float, top: Float, right: Float, bottom: Float, canvasW: Int, canvasH: Int) {
@@ -140,9 +151,13 @@ class ImageEditorViewModel @Inject constructor(
                     left = 0
                     top = ((bmpH - height) / 2).toInt()
                 }
-                Bitmap.createBitmap(current, left.coerceAtLeast(0), top.coerceAtLeast(0),
+                Bitmap.createBitmap(
+                    current,
+                    left.coerceAtLeast(0),
+                    top.coerceAtLeast(0),
                     width.coerceAtMost(current.width - left.coerceAtLeast(0)),
-                    height.coerceAtMost(current.height - top.coerceAtLeast(0)))
+                    height.coerceAtMost(current.height - top.coerceAtLeast(0))
+                )
             }
             _originalBitmap.value = cropped
             _previewBitmap.value = cropped
@@ -168,28 +183,51 @@ class ImageEditorViewModel @Inject constructor(
         if (totalRotation != 0f || p.flipH || p.flipV)
             bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
         val cm = ColorMatrix()
-        cm.postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,p.brightness*255f, 0f,1f,0f,0f,p.brightness*255f, 0f,0f,1f,0f,p.brightness*255f, 0f,0f,0f,1f,0f)))
-        cm.postConcat(ColorMatrix(floatArrayOf(p.contrast,0f,0f,0f,128f*(1f-p.contrast), 0f,p.contrast,0f,0f,128f*(1f-p.contrast), 0f,0f,p.contrast,0f,128f*(1f-p.contrast), 0f,0f,0f,1f,0f)))
-        val satM = ColorMatrix(); satM.setSaturation(p.saturation); cm.postConcat(satM)
+        cm.postConcat(ColorMatrix(floatArrayOf(
+            1f, 0f, 0f, 0f, p.brightness * 255f,
+            0f, 1f, 0f, 0f, p.brightness * 255f,
+            0f, 0f, 1f, 0f, p.brightness * 255f,
+            0f, 0f, 0f, 1f, 0f
+        )))
+        cm.postConcat(ColorMatrix(floatArrayOf(
+            p.contrast, 0f, 0f, 0f, 128f * (1f - p.contrast),
+            0f, p.contrast, 0f, 0f, 128f * (1f - p.contrast),
+            0f, 0f, p.contrast, 0f, 128f * (1f - p.contrast),
+            0f, 0f, 0f, 1f, 0f
+        )))
+        val satM = ColorMatrix()
+        satM.setSaturation(p.saturation)
+        cm.postConcat(satM)
         val warmth = p.temperature * 30f
-        cm.postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,warmth, 0f,1f,0f,0f,0f, 0f,0f,1f,0f,-warmth, 0f,0f,0f,1f,0f)))
+        cm.postConcat(ColorMatrix(floatArrayOf(
+            1f, 0f, 0f, 0f, warmth,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, -warmth,
+            0f, 0f, 0f, 1f, 0f
+        )))
         val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
         val result = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         canvas.drawBitmap(bmp, 0f, 0f, paint)
         if (p.vignette > 0f) {
             val vp = Paint(Paint.ANTI_ALIAS_FLAG)
-            vp.shader = RadialGradient(result.width/2f, result.height/2f, maxOf(result.width,result.height)/1.5f,
-                intArrayOf(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb((p.vignette*180).toInt(),0,0,0)),
-                null, Shader.TileMode.CLAMP)
-            canvas.drawRect(0f,0f,result.width.toFloat(),result.height.toFloat(),vp)
+            vp.shader = RadialGradient(
+                result.width / 2f, result.height / 2f,
+                maxOf(result.width, result.height) / 1.5f,
+                intArrayOf(android.graphics.Color.TRANSPARENT, android.graphics.Color.argb((p.vignette * 180).toInt(), 0, 0, 0)),
+                null, Shader.TileMode.CLAMP
+            )
+            canvas.drawRect(0f, 0f, result.width.toFloat(), result.height.toFloat(), vp)
         }
         if (p.grain > 0f) {
-            val gp = Paint().apply { alpha = (p.grain*60).toInt() }
+            val gp = Paint().apply { alpha = (p.grain * 60).toInt() }
             val rnd = java.util.Random()
-            for (x in 0 until result.width step 3) for (y in 0 until result.height step 3) {
-                val n = rnd.nextInt(255); gp.color = android.graphics.Color.rgb(n,n,n)
-                canvas.drawPoint(x.toFloat(),y.toFloat(),gp)
+            for (x in 0 until result.width step 3) {
+                for (y in 0 until result.height step 3) {
+                    val n = rnd.nextInt(255)
+                    gp.color = android.graphics.Color.rgb(n, n, n)
+                    canvas.drawPoint(x.toFloat(), y.toFloat(), gp)
+                }
             }
         }
         return result
@@ -209,13 +247,20 @@ class ImageEditorViewModel @Inject constructor(
         }
     }
 
-    fun resetEdits() { _editParams.value = EditParams(); _previewBitmap.value = _originalBitmap.value }
+    fun resetEdits() {
+        _editParams.value = EditParams()
+        _previewBitmap.value = _originalBitmap.value
+    }
 }
 
 enum class EditTab { CROP, ADJUST, EFFECTS }
 enum class CropRatio(val label: String, val ratio: Float?) {
-    FREE("Bebas", null), SQUARE("1:1", 1f), WIDE("16:9", 16f/9f),
-    STANDARD("4:3", 4f/3f), PORTRAIT("3:4", 3f/4f), CINEMA("21:9", 21f/9f)
+    FREE("Bebas", null),
+    SQUARE("1:1", 1f),
+    WIDE("16:9", 16f / 9f),
+    STANDARD("4:3", 4f / 3f),
+    PORTRAIT("3:4", 3f / 4f),
+    CINEMA("21:9", 21f / 9f)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -242,17 +287,25 @@ fun ImageEditorScreen(
     var isCropDrawn by remember { mutableStateOf(false) }
     var showSaved by remember { mutableStateOf(false) }
 
-    LaunchedEffect(savedPath) { if (savedPath != null) { showSaved = true } }
+    LaunchedEffect(savedPath) { if (savedPath != null) showSaved = true }
     LaunchedEffect(activeTab) { isCropMode = activeTab == EditTab.CROP; isCropDrawn = false }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Edit Foto", color = Color.White) },
-                navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) } },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, null, tint = Color.White)
+                    }
+                },
                 actions = {
-                    TextButton(onClick = { viewModel.resetEdits(); isCropDrawn = false }) { Text("Reset", color = Color.White.copy(alpha = 0.7f)) }
-                    TextButton(onClick = { viewModel.save() }) { Text("Simpan", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = { viewModel.resetEdits(); isCropDrawn = false }) {
+                        Text("Reset", color = Color.White.copy(alpha = 0.7f))
+                    }
+                    TextButton(onClick = { viewModel.save() }) {
+                        Text("Simpan", color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF1A1A1A))
             )
@@ -309,9 +362,10 @@ fun ImageEditorScreen(
                                     size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
                                     style = Stroke(3.dp.toPx())
                                 )
-                                listOf(Offset(left,top), Offset(right,top), Offset(left,bottom), Offset(right,bottom)).forEach {
-                                    drawCircle(Color.White, 8.dp.toPx(), it)
-                                }
+                                listOf(
+                                    Offset(left, top), Offset(right, top),
+                                    Offset(left, bottom), Offset(right, bottom)
+                                ).forEach { drawCircle(Color.White, 8.dp.toPx(), it) }
                             }
                         }
                     } else {
@@ -323,14 +377,21 @@ fun ImageEditorScreen(
                         )
                     }
                 }
-                if (isLoading) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFF4CAF50))
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color(0xFF4CAF50)
+                    )
+                }
                 if (showSaved) {
                     Box(
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(24.dp)
                             .background(Color(0xFF4CAF50), RoundedCornerShape(8.dp))
                             .padding(horizontal = 20.dp, vertical = 10.dp)
                     ) { Text("✓ Foto disimpan", color = Color.White, fontWeight = FontWeight.Bold) }
-                    LaunchedEffect(Unit) { kotlinx.coroutines.delay(2000); showSaved = false }
+                    LaunchedEffect(Unit) { delay(2000); showSaved = false }
                 }
             }
 
@@ -341,7 +402,11 @@ fun ImageEditorScreen(
                 EditTab.values().forEach { tab ->
                     TextButton(onClick = { activeTab = tab }) {
                         Text(
-                            when (tab) { EditTab.CROP -> "Crop & Putar"; EditTab.ADJUST -> "Adjust"; EditTab.EFFECTS -> "Efek" },
+                            when (tab) {
+                                EditTab.CROP -> "Crop & Putar"
+                                EditTab.ADJUST -> "Adjust"
+                                EditTab.EFFECTS -> "Efek"
+                            },
                             color = if (activeTab == tab) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.6f),
                             fontWeight = if (activeTab == tab) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 13.sp
@@ -414,7 +479,14 @@ fun CropPanel(
                         .background(if (selectedRatio == ratio) Color(0xFF4CAF50) else Color(0xFF2A2A2A))
                         .clickable { onRatioSelected(ratio) }
                         .padding(horizontal = 14.dp, vertical = 8.dp)
-                ) { Text(ratio.label, color = Color.White, fontSize = 13.sp, fontWeight = if (selectedRatio == ratio) FontWeight.Bold else FontWeight.Normal) }
+                ) {
+                    Text(
+                        ratio.label,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = if (selectedRatio == ratio) FontWeight.Bold else FontWeight.Normal
+                    )
+                }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -425,25 +497,19 @@ fun CropPanel(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(
-                        if (isCropDrawn) Color(0xFF4CAF50) else Color(0xFF2A2A2A),
-                        CircleShape
-                    )
+                    .background(if (isCropDrawn) Color(0xFF4CAF50) else Color(0xFF2A2A2A), CircleShape)
                     .clickable { onCrop() },
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Crop, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                }
+                Icon(Icons.Default.Crop, null, tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            Text(
-                if (isCropDrawn) "Tap Potong untuk memotong area yang dipilih" else "Seret pada gambar untuk memilih area",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 11.sp
-            )
-        }
+        Text(
+            if (isCropDrawn) "Tap ikon Potong untuk memotong area" else "Seret jari pada gambar untuk memilih area",
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        )
         Column(modifier = Modifier.padding(horizontal = 8.dp)) {
             Text("Luruskan: ${params.straighten.toInt()}°", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
             Slider(
@@ -473,8 +539,8 @@ fun AdjustPanel(params: EditParams, onUpdate: (EditParams.() -> EditParams) -> U
 @Composable
 fun EffectsPanel(params: EditParams, onUpdate: (EditParams.() -> EditParams) -> Unit) {
     Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        AdjustSlider("Vignette", params.vignette, 0f..1f) { onUpdate { copy(vignette = it) } }
-        AdjustSlider("Grain / Noise", params.grain, 0f..1f) { onUpdate { copy(grain = it) } }
+        HeavySlider("Vignette", params.vignette, 0f..1f) { onUpdate { copy(vignette = it) } }
+        HeavySlider("Grain / Noise", params.grain, 0f..1f) { onUpdate { copy(grain = it) } }
     }
 }
 
@@ -488,6 +554,25 @@ fun AdjustSlider(label: String, value: Float, range: ClosedFloatingPointRange<Fl
         Slider(
             value = value.coerceIn(range),
             onValueChange = onChange,
+            valueRange = range,
+            colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50)),
+            modifier = Modifier.height(32.dp)
+        )
+    }
+}
+
+@Composable
+fun HeavySlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    var localValue by remember(value) { mutableStateOf(value) }
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+            Text("%.2f".format(localValue), color = Color(0xFF4CAF50), fontSize = 12.sp)
+        }
+        Slider(
+            value = localValue.coerceIn(range),
+            onValueChange = { localValue = it },
+            onValueChangeFinished = { onChange(localValue) },
             valueRange = range,
             colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50)),
             modifier = Modifier.height(32.dp)
