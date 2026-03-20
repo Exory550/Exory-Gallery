@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -26,7 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
@@ -43,7 +42,7 @@ import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
-data class MediaItem(
+data class GalleryItem(
     val path: String,
     val isVideo: Boolean,
     val duration: Long = 0L,
@@ -54,8 +53,8 @@ data class MediaItem(
 class FolderContentViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
-    private val _items = MutableStateFlow<List<MediaItem>>(emptyList())
-    val items: StateFlow<List<MediaItem>> = _items
+    private val _items = MutableStateFlow<List<GalleryItem>>(emptyList())
+    val items: StateFlow<List<GalleryItem>> = _items
 
     fun loadPhotos(folderPath: String) {
         viewModelScope.launch {
@@ -63,9 +62,9 @@ class FolderContentViewModel @Inject constructor(
         }
     }
 
-    private suspend fun scanFolder(cr: ContentResolver, folderPath: String): List<MediaItem> {
+    private suspend fun scanFolder(cr: ContentResolver, folderPath: String): List<GalleryItem> {
         return withContext(Dispatchers.IO) {
-            val result = mutableListOf<MediaItem>()
+            val result = mutableListOf<GalleryItem>()
             val imgCursor = cr.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.MediaColumns.DATA),
@@ -77,7 +76,7 @@ class FolderContentViewModel @Inject constructor(
                 val col = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
                 while (it.moveToNext()) {
                     val path = it.getString(col) ?: continue
-                    result.add(MediaItem(path, false, extension = File(path).extension.uppercase()))
+                    result.add(GalleryItem(path, false, extension = File(path).extension.uppercase()))
                 }
             }
             val vidCursor = cr.query(
@@ -92,7 +91,7 @@ class FolderContentViewModel @Inject constructor(
                 val durCol = it.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 while (it.moveToNext()) {
                     val path = it.getString(dataCol) ?: continue
-                    result.add(MediaItem(path, true, it.getLong(durCol), File(path).extension.uppercase()))
+                    result.add(GalleryItem(path, true, it.getLong(durCol), File(path).extension.uppercase()))
                 }
             }
             result.sortedByDescending { File(it.path).lastModified() }
@@ -118,8 +117,7 @@ fun FolderContentScreen(
         val firstVisible = gridState.firstVisibleItemIndex
         val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: firstVisible
         val midIndex = (firstVisible + lastVisible) / 2
-        val midItem = items.getOrNull(midIndex)
-        visibleVideoIndex = if (midItem?.isVideo == true) midIndex else null
+        visibleVideoIndex = if (items.getOrNull(midIndex)?.isVideo == true) midIndex else null
     }
 
     Scaffold(
@@ -152,7 +150,9 @@ fun FolderContentScreen(
                                 navController.navigate("video/${URLEncoder.encode(item.path, "UTF-8")}")
                             } else {
                                 val encodedPath = URLEncoder.encode(item.path, "UTF-8")
-                                val encodedAll = photoPaths.joinToString(",") { URLEncoder.encode(it, "UTF-8") }
+                                val encodedAll = photoPaths.joinToString(",") { p ->
+                                    URLEncoder.encode(p, "UTF-8")
+                                }
                                 navController.navigate("photo_pager/$encodedPath?all=$encodedAll")
                             }
                         }
@@ -168,18 +168,14 @@ fun FolderContentScreen(
                         )
                     }
 
-                    val badge = when {
-                        !item.isVideo && item.extension in listOf("GIF", "RAW", "HEIF", "HEIC", "DNG", "CR2") -> item.extension
-                        else -> null
-                    }
-                    badge?.let {
+                    if (!item.isVideo && item.extension in listOf("GIF", "RAW", "HEIF", "HEIC", "DNG", "CR2")) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(4.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), shape = MaterialTheme.shapes.small)
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
-                        ) { Text(it, color = Color.White, fontSize = 9.sp) }
+                        ) { Text(item.extension, color = Color.White, fontSize = 9.sp) }
                     }
 
                     if (item.isVideo) {
@@ -212,16 +208,14 @@ fun AutoplayVideoThumbnail(path: String) {
     val context = LocalContext.current
     val player = remember(path) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.parse(path)))
+            setMediaItem(ExoMediaItem.fromUri(Uri.parse(path)))
             prepare()
             playWhenReady = true
             volume = 0f
             repeatMode = ExoPlayer.REPEAT_MODE_ONE
         }
     }
-    DisposableEffect(path) {
-        onDispose { player.release() }
-    }
+    DisposableEffect(path) { onDispose { player.release() } }
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
