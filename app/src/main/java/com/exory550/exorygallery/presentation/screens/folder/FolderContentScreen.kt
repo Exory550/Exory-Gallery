@@ -2,6 +2,7 @@ package com.exory550.exorygallery.presentation.screens.folder
 
 import android.content.ContentResolver
 import android.content.Context
+import android.net.Uri
 import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayCircle
@@ -18,10 +20,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,10 +66,11 @@ class FolderContentViewModel @Inject constructor(
     private suspend fun scanFolder(cr: ContentResolver, folderPath: String): List<MediaItem> {
         return withContext(Dispatchers.IO) {
             val result = mutableListOf<MediaItem>()
-            val imgProjection = arrayOf(MediaStore.MediaColumns.DATA)
             val imgCursor = cr.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection,
-                "${MediaStore.MediaColumns.DATA} LIKE ?", arrayOf("$folderPath/%"),
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA),
+                "${MediaStore.MediaColumns.DATA} LIKE ?",
+                arrayOf("$folderPath/%"),
                 "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
             )
             imgCursor?.use {
@@ -72,10 +80,11 @@ class FolderContentViewModel @Inject constructor(
                     result.add(MediaItem(path, false, extension = File(path).extension.uppercase()))
                 }
             }
-            val vidProjection = arrayOf(MediaStore.MediaColumns.DATA, MediaStore.Video.Media.DURATION)
             val vidCursor = cr.query(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
-                "${MediaStore.MediaColumns.DATA} LIKE ?", arrayOf("$folderPath/%"),
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.MediaColumns.DATA, MediaStore.Video.Media.DURATION),
+                "${MediaStore.MediaColumns.DATA} LIKE ?",
+                arrayOf("$folderPath/%"),
                 "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
             )
             vidCursor?.use {
@@ -83,8 +92,7 @@ class FolderContentViewModel @Inject constructor(
                 val durCol = it.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 while (it.moveToNext()) {
                     val path = it.getString(dataCol) ?: continue
-                    val dur = it.getLong(durCol)
-                    result.add(MediaItem(path, true, dur, File(path).extension.uppercase()))
+                    result.add(MediaItem(path, true, it.getLong(durCol), File(path).extension.uppercase()))
                 }
             }
             result.sortedByDescending { File(it.path).lastModified() }
@@ -103,6 +111,16 @@ fun FolderContentScreen(
     LaunchedEffect(folderPath) { viewModel.loadPhotos(folderPath) }
     val items by viewModel.items.collectAsState()
     val photoPaths = remember(items) { items.filter { !it.isVideo }.map { it.path } }
+    val gridState = rememberLazyGridState()
+    var visibleVideoIndex by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(gridState.firstVisibleItemIndex) {
+        val firstVisible = gridState.firstVisibleItemIndex
+        val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: firstVisible
+        val midIndex = (firstVisible + lastVisible) / 2
+        val midItem = items.getOrNull(midIndex)
+        visibleVideoIndex = if (midItem?.isVideo == true) midIndex else null
+    }
 
     Scaffold(
         topBar = {
@@ -118,38 +136,40 @@ fun FolderContentScreen(
     ) { padding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
+            state = gridState,
             modifier = Modifier.padding(padding).fillMaxSize(),
             contentPadding = PaddingValues(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            items(items) { item ->
+            items(items.size) { index ->
+                val item = items[index]
                 Box(
                     modifier = Modifier
                         .aspectRatio(1f)
                         .clickable {
                             if (item.isVideo) {
-                                val encoded = URLEncoder.encode(item.path, "UTF-8")
-                                navController.navigate("video/$encoded")
+                                navController.navigate("video/${URLEncoder.encode(item.path, "UTF-8")}")
                             } else {
-                                val index = photoPaths.indexOf(item.path).coerceAtLeast(0)
                                 val encodedPath = URLEncoder.encode(item.path, "UTF-8")
-                                val encodedAll = photoPaths.joinToString(",") {
-                                    URLEncoder.encode(it, "UTF-8")
-                                }
+                                val encodedAll = photoPaths.joinToString(",") { URLEncoder.encode(it, "UTF-8") }
                                 navController.navigate("photo_pager/$encodedPath?all=$encodedAll")
                             }
                         }
                 ) {
-                    AsyncImage(
-                        model = item.path,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (item.isVideo && visibleVideoIndex == index) {
+                        AutoplayVideoThumbnail(path = item.path)
+                    } else {
+                        AsyncImage(
+                            model = item.path,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
                     val badge = when {
-                        item.isVideo -> null
-                        item.extension in listOf("GIF", "RAW", "HEIF", "HEIC", "DNG", "CR2") -> item.extension
+                        !item.isVideo && item.extension in listOf("GIF", "RAW", "HEIF", "HEIC", "DNG", "CR2") -> item.extension
                         else -> null
                     }
                     badge?.let {
@@ -161,13 +181,16 @@ fun FolderContentScreen(
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
                         ) { Text(it, color = Color.White, fontSize = 9.sp) }
                     }
+
                     if (item.isVideo) {
-                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
-                        Icon(
-                            Icons.Default.PlayCircle, null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(32.dp).align(Alignment.Center)
-                        )
+                        if (visibleVideoIndex != index) {
+                            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
+                            Icon(
+                                Icons.Default.PlayCircle, null,
+                                tint = Color.White.copy(alpha = 0.9f),
+                                modifier = Modifier.size(32.dp).align(Alignment.Center)
+                            )
+                        }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -182,6 +205,32 @@ fun FolderContentScreen(
             }
         }
     }
+}
+
+@Composable
+fun AutoplayVideoThumbnail(path: String) {
+    val context = LocalContext.current
+    val player = remember(path) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(path)))
+            prepare()
+            playWhenReady = true
+            volume = 0f
+            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+        }
+    }
+    DisposableEffect(path) {
+        onDispose { player.release() }
+    }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                this.player = player
+                useController = false
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 private fun formatDuration(ms: Long): String {
