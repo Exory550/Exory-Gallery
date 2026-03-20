@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -23,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import java.net.URLDecoder
-import java.net.URLEncoder
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +97,11 @@ fun ZoomableImage(path: String, onTap: () -> Unit) {
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
-    val animatedScale by animateFloatAsState(targetValue = scale, animationSpec = spring(), label = "scale")
+    val animatedScale by animateFloatAsState(
+        targetValue = scale,
+        animationSpec = spring(),
+        label = "scale"
+    )
 
     Box(
         modifier = Modifier
