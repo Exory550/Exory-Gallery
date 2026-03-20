@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,21 +43,20 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) viewModel.loadFolders()
-    }
+    ) { granted -> if (granted) viewModel.loadFolders() }
 
-    LaunchedEffect(Unit) {
-        launcher.launch(permission)
-    }
+    LaunchedEffect(Unit) { launcher.launch(permission) }
 
     if (isLoading) LoadingDialog("Memuat folder...")
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text("ExoryGallery", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                title = { Text("ExoryGallery", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.Search.route) }) {
+                        Icon(Icons.Default.Search, contentDescription = "Cari")
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
@@ -85,7 +86,14 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(folders, key = { it.path }) { folder ->
-                    FolderCard(folder = folder, onClick = { navController.navigate(Screen.FolderContent.createRoute(folder.name, folder.path)) })
+                    FolderCard(
+                        folder = folder,
+                        onClick = {
+                            navController.navigate(
+                                Screen.FolderContent.createRoute(folder.name, folder.path)
+                            )
+                        }
+                    )
                 }
             }
         }
