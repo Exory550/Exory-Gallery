@@ -15,6 +15,7 @@ import com.exory550.exorygallery.presentation.screens.media.MediaViewerScreen
 import com.exory550.exorygallery.presentation.screens.search.SearchScreen
 import com.exory550.exorygallery.presentation.screens.settings.SettingsScreen
 import com.exory550.exorygallery.presentation.screens.splash.SplashScreen
+import com.exory550.exorygallery.presentation.screens.main.MainScreen
 import com.exory550.exorygallery.presentation.screens.statistics.StatisticsScreen
 import com.exory550.exorygallery.presentation.screens.tools.CleanupScreen
 import com.exory550.exorygallery.presentation.screens.tools.ConverterScreen
@@ -57,7 +58,8 @@ sealed class Screen(val route: String) {
 
 @Composable
 fun ExoryNavGraph(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = Screen.Splash.route) {
+    NavHost(navController = navController, startDestination = "main") {
+        composable("main") { MainScreen(navController) }
         composable(Screen.Splash.route) { SplashScreen(navController) }
         composable(Screen.Home.route) { HomeScreen(navController) }
         composable(Screen.Gallery.route) { GalleryScreen(navController) }

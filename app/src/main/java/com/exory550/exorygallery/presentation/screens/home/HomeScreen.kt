@@ -4,21 +4,26 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,25 +34,30 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.components.LoadingDialog
 import com.exory550.exorygallery.presentation.navigation.Screen
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltViewModel()) {
     val folders by viewModel.folders.collectAsState()
+    val timeline by viewModel.timeline.collectAsState()
+    val viewMode by viewModel.viewMode.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+
+    var gridColumns by remember { mutableStateOf(3) }
+    var pinchScale by remember { mutableStateOf(1f) }
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
         Manifest.permission.READ_MEDIA_IMAGES
-    else
-        Manifest.permission.READ_EXTERNAL_STORAGE
+    else Manifest.permission.READ_EXTERNAL_STORAGE
 
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) viewModel.loadFolders() }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.loadFolders()
+    }
 
     LaunchedEffect(Unit) { launcher.launch(permission) }
 
-    if (isLoading) LoadingDialog("Memuat folder...")
+    if (isLoading) LoadingDialog("Memuat...")
 
     Scaffold(
         topBar = {
@@ -57,43 +67,95 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                     IconButton(onClick = { navController.navigate(Screen.Search.route) }) {
                         Icon(Icons.Default.Search, contentDescription = "Cari")
                     }
+                    var showMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(text = { Text("Grid 2") }, onClick = { viewModel.setViewMode(ViewMode.GRID_2); gridColumns = 2; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
+                        DropdownMenuItem(text = { Text("Grid 3") }, onClick = { viewModel.setViewMode(ViewMode.GRID_3); gridColumns = 3; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
+                        DropdownMenuItem(text = { Text("Grid 4") }, onClick = { viewModel.setViewMode(ViewMode.GRID_4); gridColumns = 4; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
+                        DropdownMenuItem(text = { Text("Timeline") }, onClick = { viewModel.setViewMode(ViewMode.TIMELINE); showMenu = false }, leadingIcon = { Icon(Icons.Default.Timeline, null) })
+                    }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->
         if (folders.isEmpty() && !isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Tidak ada foto ditemukan", style = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { launcher.launch(permission) }) {
-                        Text("Izinkan Akses")
-                    }
+                    Button(onClick = { launcher.launch(permission) }) { Text("Izinkan Akses") }
                 }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(folders, key = { it.path }) { folder ->
-                    FolderCard(
-                        folder = folder,
-                        onClick = {
-                            navController.navigate(
-                                Screen.FolderContent.createRoute(folder.name, folder.path)
-                            )
+            Box(
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, _, zoom, _ ->
+                            pinchScale *= zoom
+                            when {
+                                pinchScale < 0.75f -> { gridColumns = (gridColumns + 1).coerceAtMost(4); pinchScale = 1f }
+                                pinchScale > 1.4f -> { gridColumns = (gridColumns - 1).coerceAtLeast(2); pinchScale = 1f }
+                            }
                         }
-                    )
+                    }
+            ) {
+                if (viewMode == ViewMode.TIMELINE) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        timeline.forEach { group ->
+                            stickyHeader {
+                                Text(
+                                    text = group.label,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.background)
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                            item {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(gridColumns),
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 2000.dp),
+                                    contentPadding = PaddingValues(2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    userScrollEnabled = false
+                                ) {
+                                    items(group.photos) { path ->
+                                        AsyncImage(
+                                            model = path,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.aspectRatio(1f).clickable {
+                                                navController.navigate(Screen.PhotoViewer.createRoute(path))
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(folders, key = { it.path }) { folder ->
+                            FolderCard(folder = folder, onClick = {
+                                navController.navigate(Screen.FolderContent.createRoute(folder.name, folder.path))
+                            })
+                        }
+                    }
                 }
             }
         }
@@ -108,35 +170,11 @@ fun FolderCard(folder: MediaFolder, onClick: () -> Unit) {
             .clip(RoundedCornerShape(8.dp))
             .clickable { onClick() }
     ) {
-        AsyncImage(
-            model = folder.coverUri,
-            contentDescription = folder.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.4f))
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp)
-        ) {
-            Text(
-                text = folder.name,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${folder.count}",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 11.sp
-            )
+        AsyncImage(model = folder.coverUri, contentDescription = folder.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+            Text(text = folder.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "${folder.count}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
         }
     }
 }
