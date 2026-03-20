@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -34,7 +33,6 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.exory550.exorygallery.presentation.components.LoadingDialog
 import com.exory550.exorygallery.presentation.navigation.Screen
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -43,7 +41,6 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
     val timeline by viewModel.timeline.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-
     var gridColumns by remember { mutableStateOf(3) }
     var pinchScale by remember { mutableStateOf(1f) }
 
@@ -54,7 +51,6 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) viewModel.loadFolders()
     }
-
     LaunchedEffect(Unit) { launcher.launch(permission) }
 
     if (isLoading) LoadingDialog("Memuat...")
@@ -72,10 +68,26 @@ fun HomeScreen(navController: NavController, viewModel: HomeViewModel = hiltView
                         Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        DropdownMenuItem(text = { Text("Grid 2") }, onClick = { viewModel.setViewMode(ViewMode.GRID_2); gridColumns = 2; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
-                        DropdownMenuItem(text = { Text("Grid 3") }, onClick = { viewModel.setViewMode(ViewMode.GRID_3); gridColumns = 3; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
-                        DropdownMenuItem(text = { Text("Grid 4") }, onClick = { viewModel.setViewMode(ViewMode.GRID_4); gridColumns = 4; showMenu = false }, leadingIcon = { Icon(Icons.Default.GridView, null) })
-                        DropdownMenuItem(text = { Text("Timeline") }, onClick = { viewModel.setViewMode(ViewMode.TIMELINE); showMenu = false }, leadingIcon = { Icon(Icons.Default.Timeline, null) })
+                        DropdownMenuItem(
+                            text = { Text("Grid 2") },
+                            onClick = { viewModel.setViewMode(ViewMode.GRID_2); gridColumns = 2; showMenu = false },
+                            leadingIcon = { Icon(Icons.Default.ViewModule, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Grid 3") },
+                            onClick = { viewModel.setViewMode(ViewMode.GRID_3); gridColumns = 3; showMenu = false },
+                            leadingIcon = { Icon(Icons.Default.ViewModule, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Grid 4") },
+                            onClick = { viewModel.setViewMode(ViewMode.GRID_4); gridColumns = 4; showMenu = false },
+                            leadingIcon = { Icon(Icons.Default.ViewComfy, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Timeline") },
+                            onClick = { viewModel.setViewMode(ViewMode.TIMELINE); showMenu = false },
+                            leadingIcon = { Icon(Icons.Default.ViewAgenda, null) }
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)

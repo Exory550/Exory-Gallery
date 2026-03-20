@@ -6,9 +6,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.exory550.exorygallery.presentation.navigation.Screen
@@ -40,41 +41,24 @@ fun ProfileScreen(navController: NavController) {
                     }
                 }
             }
-
-            ProfileMenuItem(icon = Icons.Default.Settings, label = "Pengaturan") {
-                navController.navigate(Screen.Settings.route)
-            }
-            ProfileMenuItem(icon = Icons.Default.BarChart, label = "Statistik") {
-                navController.navigate(Screen.Statistics.route)
-            }
-            ProfileMenuItem(icon = Icons.Default.Lock, label = "Vault") {
-                navController.navigate(Screen.Vault.route)
-            }
-            ProfileMenuItem(icon = Icons.Default.CleaningServices, label = "Pembersih") {
-                navController.navigate(Screen.Cleanup.route)
-            }
-            ProfileMenuItem(icon = Icons.Default.Transform, label = "Konverter") {
-                navController.navigate(Screen.Converter.route)
-            }
+            ProfileMenuItem(Icons.Default.Settings, "Pengaturan") { navController.navigate(Screen.Settings.route) }
+            ProfileMenuItem(Icons.Default.PieChart, "Statistik") { navController.navigate(Screen.Statistics.route) }
+            ProfileMenuItem(Icons.Default.Lock, "Vault") { navController.navigate(Screen.Vault.route) }
+            ProfileMenuItem(Icons.Default.DeleteSweep, "Pembersih") { navController.navigate(Screen.Cleanup.route) }
+            ProfileMenuItem(Icons.Default.SwapHoriz, "Konverter") { navController.navigate(Screen.Converter.route) }
         }
     }
 }
 
 @Composable
-fun ProfileMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+fun ProfileMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, contentDescription = label)
             Spacer(modifier = Modifier.width(16.dp))
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, contentDescription = null)
+            Icon(Icons.Default.KeyboardArrowRight, contentDescription = null)
         }
     }
 }
