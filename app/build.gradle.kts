@@ -68,7 +68,6 @@ dependencies {
     implementation(libs.exifinterface)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
-    implementation(libs.play.services.maps)
     implementation(libs.accompanist.permissions)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
