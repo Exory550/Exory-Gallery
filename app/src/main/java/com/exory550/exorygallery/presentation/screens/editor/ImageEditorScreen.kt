@@ -408,12 +408,12 @@ fun CropOverlay(
                 }
             }
             .pointerInput(Unit) {
-                androidx.compose.foundation.gestures.detectDragGestures(
-                    onDragStart = { pos ->
-                        val cx = pos.x
-                        val cy = pos.y
-                        val midX = (left + right) / 2f
-                        val midY = (top + bottom) / 2f
+                detectDragGestures(
+                    onDragStart = { pos: Offset ->
+                        val cx: Float = pos.x
+                        val cy: Float = pos.y
+                        val midX: Float = (left + right) / 2f
+                        val midY: Float = (top + bottom) / 2f
                         activeHandle = when {
                             kotlin.math.abs(cx - left) < handleSize && kotlin.math.abs(cy - top) < handleSize -> 0
                             kotlin.math.abs(cx - right) < handleSize && kotlin.math.abs(cy - top) < handleSize -> 1
@@ -426,11 +426,11 @@ fun CropOverlay(
                             else -> -1
                         }
                     },
-                    onDrag = { _, dragAmount ->
-                        val dx = dragAmount.x
-                        val dy = dragAmount.y
-                        val maxW = canvasSize.width.toFloat()
-                        val maxH = canvasSize.height.toFloat()
+                    onDrag = { _: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: Offset ->
+                        val dx: Float = dragAmount.x
+                        val dy: Float = dragAmount.y
+                        val maxW: Float = canvasSize.width.toFloat()
+                        val maxH: Float = canvasSize.height.toFloat()
                         val minSize = 80f
                         when (activeHandle) {
                             0 -> { left = (left + dx).coerceIn(0f, right - minSize); top = (top + dy).coerceIn(0f, bottom - minSize) }
