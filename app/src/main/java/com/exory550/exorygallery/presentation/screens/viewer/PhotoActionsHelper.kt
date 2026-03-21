@@ -11,7 +11,108 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+enum class ConflictAction { SKIP, OVERWRITE, KEEP_BOTH }
+
+data class CopyResult(
+    val success: Boolean,
+    val conflict: Boolean = false,
+    val conflictFileName: String = "",
+    val destPath: String = ""
+)
+
 object PhotoActionsHelper {
+
+    suspend fun copyFile(sourcePath: String, destFolder: String, conflictAction: ConflictAction = ConflictAction.KEEP_BOTH): CopyResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val source = File(sourcePath)
+                val destDir = File(destFolder)
+                if (!destDir.exists()) destDir.mkdirs()
+                val destFile = File(destDir, source.name)
+
+                if (destFile.exists()) {
+                    return@withContext CopyResult(false, conflict = true, conflictFileName = source.name, destPath = destFile.absolutePath)
+                }
+
+                source.copyTo(destFile, overwrite = false)
+                CopyResult(true, destPath = destFile.absolutePath)
+            } catch (e: Exception) {
+                CopyResult(false)
+            }
+        }
+    }
+
+    suspend fun copyFileWithAction(sourcePath: String, destFolder: String, action: ConflictAction): CopyResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val source = File(sourcePath)
+                val destDir = File(destFolder)
+                if (!destDir.exists()) destDir.mkdirs()
+
+                val destFile = when (action) {
+                    ConflictAction.SKIP -> return@withContext CopyResult(true)
+                    ConflictAction.OVERWRITE -> File(destDir, source.name)
+                    ConflictAction.KEEP_BOTH -> {
+                        var counter = 1
+                        var newFile = File(destDir, "${source.nameWithoutExtension}_$counter.${source.extension}")
+                        while (newFile.exists()) { counter++; newFile = File(destDir, "${source.nameWithoutExtension}_$counter.${source.extension}") }
+                        newFile
+                    }
+                }
+                source.copyTo(destFile, overwrite = action == ConflictAction.OVERWRITE)
+                CopyResult(true, destPath = destFile.absolutePath)
+            } catch (e: Exception) {
+                CopyResult(false)
+            }
+        }
+    }
+
+    suspend fun moveFile(sourcePath: String, destFolder: String, conflictAction: ConflictAction = ConflictAction.KEEP_BOTH): CopyResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val source = File(sourcePath)
+                val destDir = File(destFolder)
+                if (!destDir.exists()) destDir.mkdirs()
+                val destFile = File(destDir, source.name)
+
+                if (destFile.exists()) {
+                    return@withContext CopyResult(false, conflict = true, conflictFileName = source.name, destPath = destFile.absolutePath)
+                }
+
+                source.copyTo(destFile, overwrite = false)
+                source.delete()
+                CopyResult(true, destPath = destFile.absolutePath)
+            } catch (e: Exception) {
+                CopyResult(false)
+            }
+        }
+    }
+
+    suspend fun moveFileWithAction(sourcePath: String, destFolder: String, action: ConflictAction): CopyResult {
+        return withContext(Dispatchers.IO) {
+            try {
+                val source = File(sourcePath)
+                val destDir = File(destFolder)
+                if (!destDir.exists()) destDir.mkdirs()
+
+                val destFile = when (action) {
+                    ConflictAction.SKIP -> return@withContext CopyResult(true)
+                    ConflictAction.OVERWRITE -> File(destDir, source.name)
+                    ConflictAction.KEEP_BOTH -> {
+                        var counter = 1
+                        var newFile = File(destDir, "${source.nameWithoutExtension}_$counter.${source.extension}")
+                        while (newFile.exists()) { counter++; newFile = File(destDir, "${source.nameWithoutExtension}_$counter.${source.extension}") }
+                        newFile
+                    }
+                }
+                source.copyTo(destFile, overwrite = action == ConflictAction.OVERWRITE)
+                source.delete()
+                CopyResult(true, destPath = destFile.absolutePath)
+            } catch (e: Exception) {
+                CopyResult(false)
+            }
+        }
+    }
 
     suspend fun deleteFile(context: Context, path: String): Boolean {
         return withContext(Dispatchers.IO) {
@@ -19,42 +120,24 @@ object PhotoActionsHelper {
                 val file = File(path)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     val uri = getMediaUri(context.contentResolver, path)
-                    if (uri != null) {
-                        context.contentResolver.delete(uri, null, null) > 0
-                    } else {
-                        file.delete()
-                    }
-                } else {
-                    file.delete()
-                }
+                    if (uri != null) context.contentResolver.delete(uri, null, null) > 0
+                    else file.delete()
+                } else file.delete()
             } catch (e: Exception) { false }
         }
     }
 
-    suspend fun copyFile(sourcePath: String, destFolder: String): String? {
+    suspend fun moveToTrash(context: Context, path: String): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val source = File(sourcePath)
-                val destDir = File(destFolder)
-                if (!destDir.exists()) destDir.mkdirs()
-                val dest = File(destDir, source.name)
-                source.copyTo(dest, overwrite = false)
-                dest.absolutePath
-            } catch (e: Exception) { null }
-        }
-    }
-
-    suspend fun moveFile(sourcePath: String, destFolder: String): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val source = File(sourcePath)
-                val destDir = File(destFolder)
-                if (!destDir.exists()) destDir.mkdirs()
-                val dest = File(destDir, source.name)
-                source.copyTo(dest, overwrite = false)
-                source.delete()
-                dest.absolutePath
-            } catch (e: Exception) { null }
+                val file = File(path)
+                val trashDir = File(context.filesDir, ".trash")
+                if (!trashDir.exists()) trashDir.mkdirs()
+                val trashFile = File(trashDir, "${System.currentTimeMillis()}_${file.name}")
+                file.copyTo(trashFile)
+                file.delete()
+                true
+            } catch (e: Exception) { false }
         }
     }
 
@@ -86,12 +169,20 @@ object PhotoActionsHelper {
         try {
             val file = File(path)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val mimeType = when (file.extension.lowercase()) {
+                "mp4", "mkv", "avi", "mov" -> "video/*"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                else -> "image/jpeg"
+            }
             val intent = Intent(Intent.ACTION_SEND).apply {
-                type = if (path.endsWith(".mp4") || path.endsWith(".mkv")) "video/*" else "image/*"
+                type = mimeType
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(Intent.createChooser(intent, "Bagikan"))
+            context.startActivity(Intent.createChooser(intent, "Bagikan via").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -103,7 +194,9 @@ object PhotoActionsHelper {
                 setDataAndType(uri, "*/*")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(Intent.createChooser(intent, "Buka dengan"))
+            context.startActivity(Intent.createChooser(intent, "Buka dengan").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -116,7 +209,9 @@ object PhotoActionsHelper {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra("mimeType", "image/*")
             }
-            context.startActivity(Intent.createChooser(intent, "Atur sebagai"))
+            context.startActivity(Intent.createChooser(intent, "Atur sebagai").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
         } catch (e: Exception) { e.printStackTrace() }
     }
 

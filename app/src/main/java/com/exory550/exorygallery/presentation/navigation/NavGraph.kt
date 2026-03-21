@@ -23,8 +23,9 @@ import com.exory550.exorygallery.presentation.screens.tools.ConverterScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultScreen
 import com.exory550.exorygallery.presentation.screens.vault.VaultUnlockScreen
 import com.exory550.exorygallery.presentation.screens.video.VideoPlayerScreen
-import com.exory550.exorygallery.presentation.screens.viewer.PhotoViewerScreen
+import com.exory550.exorygallery.presentation.screens.viewer.ConflictAction
 import com.exory550.exorygallery.presentation.screens.viewer.PhotoActionsHelper
+import com.exory550.exorygallery.presentation.screens.viewer.PhotoViewerScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -117,7 +118,9 @@ fun ExoryNavGraph(navController: NavHostController) {
         ) { back ->
             val encodedPath = back.arguments?.getString("photoPath") ?: ""
             val allEncoded = back.arguments?.getString("all") ?: ""
-            val allPhotos = if (allEncoded.isNotBlank()) allEncoded.split(",").map { URLDecoder.decode(it, "UTF-8") } else emptyList()
+            val allPhotos = if (allEncoded.isNotBlank())
+                allEncoded.split(",").map { URLDecoder.decode(it, "UTF-8") }
+            else emptyList()
             PhotoViewerScreen(navController, encodedPath, allPhotos)
         }
         composable(
@@ -143,18 +146,25 @@ fun ExoryNavGraph(navController: NavHostController) {
             val encodedFilePath = back.arguments?.getString("filePath") ?: ""
             val filePath = URLDecoder.decode(encodedFilePath, "UTF-8")
             val title = if (action == "move") "Pindah ke" else "Salin ke"
+
             FolderPickerScreen(
                 navController = navController,
                 title = title,
                 onFolderSelected = { destFolder ->
-                    CoroutineScope(Dispatchers.IO).launch {
-                        if (action == "move") {
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val result = if (action == "move") {
                             PhotoActionsHelper.moveFile(filePath, destFolder)
                         } else {
                             PhotoActionsHelper.copyFile(filePath, destFolder)
                         }
+                        if (result.conflict) {
+                            navController.previousBackStackEntry?.savedStateHandle?.set("conflict_action", action)
+                            navController.previousBackStackEntry?.savedStateHandle?.set("conflict_dest", destFolder)
+                            navController.previousBackStackEntry?.savedStateHandle?.set("conflict_filename", result.conflictFileName)
+                            navController.previousBackStackEntry?.savedStateHandle?.set("show_conflict", true)
+                        }
+                        navController.popBackStack()
                     }
-                    navController.popBackStack()
                 }
             )
         }

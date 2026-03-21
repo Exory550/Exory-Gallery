@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.*
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -49,8 +51,15 @@ fun PhotoViewerScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showProperties by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showConflictDialog by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf("") }
+    var pendingDestFolder by remember { mutableStateOf("") }
+    var conflictFileName by remember { mutableStateOf("") }
+    var selectedConflictAction by remember { mutableStateOf(ConflictAction.OVERWRITE) }
     var renameText by remember { mutableStateOf("") }
+    var deleteToTrash by remember { mutableStateOf(true) }
+    var skipTrashConfirm by remember { mutableStateOf(false) }
     var snackbarMsg by remember { mutableStateOf<String?>(null) }
     val snackbarState = remember { SnackbarHostState() }
     val currentPath = photos.getOrElse(pagerState.currentPage) { initialPath }
@@ -64,22 +73,115 @@ fun PhotoViewerScreen(
         onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
     }
 
-    if (showDeleteConfirm) {
+    if (showDeleteDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
+            onDismissRequest = { showDeleteDialog = false },
             title = { Text("Hapus Foto") },
-            text = { Text("Hapus ${File(currentPath).name}?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${File(currentPath).name} (${
+                        "%.1f kB".format(File(currentPath).length() / 1024.0)
+                    })")
+                    HorizontalDivider()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().selectable(
+                            selected = deleteToTrash,
+                            onClick = { deleteToTrash = true },
+                            role = Role.RadioButton
+                        ).padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = deleteToTrash, onClick = { deleteToTrash = true })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Pindahkan ke tempat sampah")
+                            Text("Bisa dipulihkan kembali", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().selectable(
+                            selected = !deleteToTrash,
+                            onClick = { deleteToTrash = false },
+                            role = Role.RadioButton
+                        ).padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = !deleteToTrash, onClick = { deleteToTrash = false })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Hapus permanen", color = MaterialTheme.colorScheme.error)
+                            Text("Tidak bisa dipulihkan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch {
-                        val ok = PhotoActionsHelper.deleteFile(context, currentPath)
-                        snackbarMsg = if (ok) "Foto dihapus" else "Gagal menghapus"
-                        showDeleteConfirm = false
+                        val ok = if (deleteToTrash) {
+                            PhotoActionsHelper.moveToTrash(context, currentPath)
+                        } else {
+                            PhotoActionsHelper.deleteFile(context, currentPath)
+                        }
+                        snackbarMsg = if (ok) {
+                            if (deleteToTrash) "Dipindahkan ke tempat sampah" else "Foto dihapus permanen"
+                        } else "Gagal menghapus"
+                        showDeleteDialog = false
                         if (ok && photos.size == 1) navController.popBackStack()
                     }
-                }) { Text("Hapus", color = MaterialTheme.colorScheme.error) }
+                }) { Text(if (deleteToTrash) "Pindah ke Sampah" else "Hapus Permanen", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Batal") } }
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Batal") } }
+        )
+    }
+
+    if (showConflictDialog) {
+        AlertDialog(
+            onDismissRequest = { showConflictDialog = false },
+            title = { Text("File Sudah Ada") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Berkas \"$conflictFileName\" sudah ada di folder tujuan.")
+                    HorizontalDivider()
+                    listOf(
+                        Triple(ConflictAction.SKIP, "Lewati", "Biarkan file lama, tidak menyalin"),
+                        Triple(ConflictAction.OVERWRITE, "Timpa", "Ganti file lama dengan yang baru"),
+                        Triple(ConflictAction.KEEP_BOTH, "Simpan keduanya", "Simpan dengan nama berbeda")
+                    ).forEach { (action, label, desc) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().selectable(
+                                selected = selectedConflictAction == action,
+                                onClick = { selectedConflictAction = action },
+                                role = Role.RadioButton
+                            ).padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedConflictAction == action, onClick = { selectedConflictAction = action })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(label, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                                Text(desc, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        val result = if (pendingAction == "copy") {
+                            PhotoActionsHelper.copyFileWithAction(currentPath, pendingDestFolder, selectedConflictAction)
+                        } else {
+                            PhotoActionsHelper.moveFileWithAction(currentPath, pendingDestFolder, selectedConflictAction)
+                        }
+                        snackbarMsg = if (result.success) {
+                            if (pendingAction == "copy") "File berhasil disalin" else "File berhasil dipindah"
+                        } else "Gagal"
+                        showConflictDialog = false
+                    }
+                }) { Text("Oke", color = MaterialTheme.colorScheme.primary) }
+            },
+            dismissButton = { TextButton(onClick = { showConflictDialog = false }) { Text("Batalkan") } }
         )
     }
 
@@ -88,7 +190,12 @@ fun PhotoViewerScreen(
             onDismissRequest = { showRenameDialog = false },
             title = { Text("Ubah Nama") },
             text = {
-                OutlinedTextField(value = renameText, onValueChange = { renameText = it }, singleLine = true, label = { Text("Nama file") })
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Nama file") }
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -118,14 +225,10 @@ fun PhotoViewerScreen(
                 }
             },
             onCopyTo = {
-                navController.navigate(
-                    Screen.FolderPicker.createRoute("copy", java.net.URLEncoder.encode(currentPath, "UTF-8"))
-                )
+                navController.navigate(Screen.FolderPicker.createRoute("copy", java.net.URLEncoder.encode(currentPath, "UTF-8")))
             },
             onMoveTo = {
-                navController.navigate(
-                    Screen.FolderPicker.createRoute("move", java.net.URLEncoder.encode(currentPath, "UTF-8"))
-                )
+                navController.navigate(Screen.FolderPicker.createRoute("move", java.net.URLEncoder.encode(currentPath, "UTF-8")))
             },
             onEdit = { navController.navigate(Screen.ImageEditor.createRoute(currentPath)) },
             onShare = { PhotoActionsHelper.shareFile(context, currentPath) },
@@ -133,7 +236,7 @@ fun PhotoViewerScreen(
             onSetAs = { PhotoActionsHelper.setAsWallpaper(context, currentPath) },
             onAddFavorite = { snackbarMsg = "Ditambahkan ke favorit" },
             onSelectAll = {},
-            onDelete = { showDeleteConfirm = true }
+            onDelete = { showDeleteDialog = true }
         )
     }
 
@@ -141,21 +244,42 @@ fun PhotoViewerScreen(
         PhotoPropertiesSheet(path = currentPath, onDismiss = { showProperties = false })
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarState) }, containerColor = Color.Black) { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarState) },
+        containerColor = Color.Black
+    ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(Color.Black)) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), key = { photos[it] }) { page ->
-                ZoomableImage(path = photos[page], onTap = { showControls = !showControls }, pagerState = pagerState)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                key = { photos[it] },
+                userScrollEnabled = true
+            ) { page ->
+                ZoomableImage(
+                    path = photos[page],
+                    onTap = { showControls = !showControls },
+                    pagerState = pagerState
+                )
             }
 
-            AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart).fillMaxWidth()) {
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopStart).fillMaxWidth()
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).padding(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) }
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.Default.ArrowBack, null, tint = Color.White)
+                    }
                     Spacer(modifier = Modifier.weight(1f))
                     Text("${pagerState.currentPage + 1} / ${photos.size}", color = Color.White)
-                    IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = Color.White) }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                    }
                 }
             }
 
@@ -170,13 +294,17 @@ fun PhotoViewerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BottomAction(Icons.Default.Tune, "Edit") { navController.navigate(Screen.ImageEditor.createRoute(currentPath)) }
-                    BottomAction(Icons.Default.Share, "Bagikan") { PhotoActionsHelper.shareFile(context, currentPath) }
+                    BottomAction(Icons.Default.Tune, "Edit") {
+                        navController.navigate(Screen.ImageEditor.createRoute(currentPath))
+                    }
+                    BottomAction(Icons.Default.Share, "Bagikan") {
+                        PhotoActionsHelper.shareFile(context, currentPath)
+                    }
                     BottomAction(Icons.Default.Info, "Properti") { showProperties = true }
                     BottomAction(Icons.Default.DriveFileMove, "Pindah") {
                         navController.navigate(Screen.FolderPicker.createRoute("move", java.net.URLEncoder.encode(currentPath, "UTF-8")))
                     }
-                    BottomAction(Icons.Default.Delete, "Hapus") { showDeleteConfirm = true }
+                    BottomAction(Icons.Default.Delete, "Hapus") { showDeleteDialog = true }
                 }
             }
         }
@@ -184,8 +312,15 @@ fun PhotoViewerScreen(
 }
 
 @Composable
-fun BottomAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp).clickable { onClick() }) {
+fun BottomAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 8.dp).clickable { onClick() }
+    ) {
         Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
         Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
     }
@@ -197,26 +332,52 @@ fun ZoomableImage(path: String, onTap: () -> Unit, pagerState: PagerState) {
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
-    val animatedScale by animateFloatAsState(targetValue = scale, animationSpec = spring(stiffness = Spring.StiffnessMedium), label = "scale")
+    val animatedScale by animateFloatAsState(
+        targetValue = scale,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "scale"
+    )
     LaunchedEffect(pagerState.currentPage) { scale = 1f; offsetX = 0f; offsetY = 0f }
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = { if (scale > 1f) { scale = 1f; offsetX = 0f; offsetY = 0f } else scale = 2.5f },
+                    onDoubleTap = {
+                        if (scale > 1f) { scale = 1f; offsetX = 0f; offsetY = 0f }
+                        else scale = 2.5f
+                    },
                     onTap = { onTap() }
                 )
             }
             .pointerInput(scale) {
-                if (scale > 1f) detectTransformGestures { _, pan, zoom, _ -> scale = (scale * zoom).coerceIn(1f, 5f); offsetX += pan.x; offsetY += pan.y }
-                else detectTransformGestures { _, _, zoom, _ -> if (zoom > 1f) scale = (scale * zoom).coerceIn(1f, 5f) }
+                if (scale > 1f) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        scale = (scale * zoom).coerceIn(1f, 5f)
+                        offsetX += pan.x
+                        offsetY += pan.y
+                    }
+                } else {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (zoom > 1f) scale = (scale * zoom).coerceIn(1f, 5f)
+                    }
+                }
             }
     ) {
         AsyncImage(
-            model = path, contentDescription = null, contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().align(Alignment.Center)
-                .graphicsLayer(scaleX = animatedScale, scaleY = animatedScale, translationX = offsetX, translationY = offsetY)
+            model = path,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .align(Alignment.Center)
+                .graphicsLayer(
+                    scaleX = animatedScale,
+                    scaleY = animatedScale,
+                    translationX = offsetX,
+                    translationY = offsetY
+                )
         )
     }
 }
