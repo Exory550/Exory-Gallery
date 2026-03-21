@@ -384,94 +384,111 @@ fun CropOverlay(
     onSizeChanged: (IntSize) -> Unit,
     onCropChange: (Offset, Offset, Boolean) -> Unit
 ) {
-    var localStart by remember { mutableStateOf(cropStart) }
-    var localEnd by remember { mutableStateOf(cropEnd) }
+    var left by remember { mutableStateOf(0f) }
+    var top by remember { mutableStateOf(0f) }
+    var right by remember { mutableStateOf(0f) }
+    var bottom by remember { mutableStateOf(0f) }
+    var initialized by remember { mutableStateOf(false) }
     var activeHandle by remember { mutableStateOf(-1) }
-
-    LaunchedEffect(cropStart, cropEnd, isCropDrawn) {
-        if (!isCropDrawn) {
-            localStart = Offset.Zero
-            localEnd = Offset.Zero
-        }
-    }
+    val handleSize = 50f
 
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned {
-                onSizeChanged(it.size)
-                if (!isCropDrawn) {
-                    val pad = 40f
-                    localStart = Offset(pad, pad)
-                    localEnd = Offset(it.size.width - pad, it.size.height - pad)
-                    onCropChange(localStart, localEnd, true)
+            .onGloballyPositioned { coords ->
+                onSizeChanged(coords.size)
+                if (!initialized) {
+                    val pad = 60f
+                    left = pad
+                    top = pad
+                    right = coords.size.width.toFloat() - pad
+                    bottom = coords.size.height.toFloat() - pad
+                    initialized = true
+                    onCropChange(Offset(left, top), Offset(right, bottom), true)
                 }
             }
             .pointerInput(Unit) {
                 androidx.compose.foundation.gestures.detectDragGestures(
                     onDragStart = { pos ->
-                        val handleSize = 40f
-                        val handles = listOf(localStart, Offset(localEnd.x, localStart.y),
-                            Offset(localStart.x, localEnd.y), localEnd,
-                            Offset((localStart.x + localEnd.x)/2, localStart.y),
-                            Offset((localStart.x + localEnd.x)/2, localEnd.y),
-                            Offset(localStart.x, (localStart.y + localEnd.y)/2),
-                            Offset(localEnd.x, (localStart.y + localEnd.y)/2))
-                        activeHandle = handles.indexOfFirst { h ->
-                            kotlin.math.abs(pos.x - h.x) < handleSize && kotlin.math.abs(pos.y - h.y) < handleSize
+                        val cx = pos.x
+                        val cy = pos.y
+                        val midX = (left + right) / 2f
+                        val midY = (top + bottom) / 2f
+                        activeHandle = when {
+                            kotlin.math.abs(cx - left) < handleSize && kotlin.math.abs(cy - top) < handleSize -> 0
+                            kotlin.math.abs(cx - right) < handleSize && kotlin.math.abs(cy - top) < handleSize -> 1
+                            kotlin.math.abs(cx - left) < handleSize && kotlin.math.abs(cy - bottom) < handleSize -> 2
+                            kotlin.math.abs(cx - right) < handleSize && kotlin.math.abs(cy - bottom) < handleSize -> 3
+                            kotlin.math.abs(cx - midX) < handleSize && kotlin.math.abs(cy - top) < handleSize -> 4
+                            kotlin.math.abs(cx - midX) < handleSize && kotlin.math.abs(cy - bottom) < handleSize -> 5
+                            kotlin.math.abs(cx - left) < handleSize && kotlin.math.abs(cy - midY) < handleSize -> 6
+                            kotlin.math.abs(cx - right) < handleSize && kotlin.math.abs(cy - midY) < handleSize -> 7
+                            else -> -1
                         }
                     },
-                    onDrag = { _, drag ->
-                        val w = canvasSize.width.toFloat()
-                        val h = canvasSize.height.toFloat()
+                    onDrag = { _, dragAmount ->
+                        val dx = dragAmount.x
+                        val dy = dragAmount.y
+                        val maxW = canvasSize.width.toFloat()
+                        val maxH = canvasSize.height.toFloat()
+                        val minSize = 80f
                         when (activeHandle) {
-                            0 -> { localStart = Offset((localStart.x + drag.x).coerceIn(0f, localEnd.x - 50f), (localStart.y + drag.y).coerceIn(0f, localEnd.y - 50f)) }
-                            1 -> { localEnd = Offset((localEnd.x + drag.x).coerceIn(localStart.x + 50f, w), localStart.y); localStart = Offset(localStart.x, (localStart.y + drag.y).coerceIn(0f, localEnd.y - 50f)) }
-                            2 -> { localStart = Offset((localStart.x + drag.x).coerceIn(0f, localEnd.x - 50f), localStart.y); localEnd = Offset(localEnd.x, (localEnd.y + drag.y).coerceIn(localStart.y + 50f, h)) }
-                            3 -> { localEnd = Offset((localEnd.x + drag.x).coerceIn(localStart.x + 50f, w), (localEnd.y + drag.y).coerceIn(localStart.y + 50f, h)) }
-                            4 -> { localStart = Offset(localStart.x, (localStart.y + drag.y).coerceIn(0f, localEnd.y - 50f)) }
-                            5 -> { localEnd = Offset(localEnd.x, (localEnd.y + drag.y).coerceIn(localStart.y + 50f, h)) }
-                            6 -> { localStart = Offset((localStart.x + drag.x).coerceIn(0f, localEnd.x - 50f), localStart.y) }
-                            7 -> { localEnd = Offset((localEnd.x + drag.x).coerceIn(localStart.x + 50f, w), localEnd.y) }
+                            0 -> { left = (left + dx).coerceIn(0f, right - minSize); top = (top + dy).coerceIn(0f, bottom - minSize) }
+                            1 -> { right = (right + dx).coerceIn(left + minSize, maxW); top = (top + dy).coerceIn(0f, bottom - minSize) }
+                            2 -> { left = (left + dx).coerceIn(0f, right - minSize); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                            3 -> { right = (right + dx).coerceIn(left + minSize, maxW); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                            4 -> { top = (top + dy).coerceIn(0f, bottom - minSize) }
+                            5 -> { bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                            6 -> { left = (left + dx).coerceIn(0f, right - minSize) }
+                            7 -> { right = (right + dx).coerceIn(left + minSize, maxW) }
                         }
-                        onCropChange(localStart, localEnd, true)
+                        onCropChange(Offset(left, top), Offset(right, bottom), true)
                     }
                 )
             }
     ) {
-        drawImage(bitmap.asImageBitmap(), dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()))
-
-        val l = localStart.x; val t = localStart.y
-        val r = localEnd.x; val b = localEnd.y
-
-        drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(l, size.height))
-        drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(r, 0f), size = androidx.compose.ui.geometry.Size(size.width - r, size.height))
-        drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(l, 0f), size = androidx.compose.ui.geometry.Size(r - l, t))
-        drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(l, b), size = androidx.compose.ui.geometry.Size(r - l, size.height - b))
-
-        drawRect(color = Color.White, topLeft = Offset(l, t), size = androidx.compose.ui.geometry.Size(r - l, b - t), style = Stroke(2.dp.toPx()))
-
-        val third_w = (r - l) / 3f
-        val third_h = (b - t) / 3f
-        for (i in 1..2) {
-            drawLine(Color.White.copy(alpha = 0.4f), Offset(l + third_w * i, t), Offset(l + third_w * i, b), strokeWidth = 1.dp.toPx())
-            drawLine(Color.White.copy(alpha = 0.4f), Offset(l, t + third_h * i), Offset(r, t + third_h * i), strokeWidth = 1.dp.toPx())
-        }
-
-        val hs = 14.dp.toPx()
-        val corners = listOf(Offset(l, t), Offset(r, t), Offset(l, b), Offset(r, b))
-        corners.forEach { c ->
-            drawLine(Color.White, c, Offset(c.x + if (c.x == l) hs else -hs, c.y), strokeWidth = 4.dp.toPx())
-            drawLine(Color.White, c, Offset(c.x, c.y + if (c.y == t) hs else -hs), strokeWidth = 4.dp.toPx())
-        }
-
-        val mids = listOf(
-            Offset((l+r)/2f - hs/2, t) to Offset((l+r)/2f + hs/2, t),
-            Offset((l+r)/2f - hs/2, b) to Offset((l+r)/2f + hs/2, b),
-            Offset(l, (t+b)/2f - hs/2) to Offset(l, (t+b)/2f + hs/2),
-            Offset(r, (t+b)/2f - hs/2) to Offset(r, (t+b)/2f + hs/2)
+        drawImage(
+            bitmap.asImageBitmap(),
+            dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt())
         )
-        mids.forEach { (a, b2) -> drawLine(Color.White, a, b2, strokeWidth = 4.dp.toPx()) }
+
+        val dimColor = Color.Black.copy(alpha = 0.55f)
+        drawRect(dimColor, topLeft = Offset(0f, 0f), size = androidx.compose.ui.geometry.Size(left, size.height))
+        drawRect(dimColor, topLeft = Offset(right, 0f), size = androidx.compose.ui.geometry.Size(size.width - right, size.height))
+        drawRect(dimColor, topLeft = Offset(left, 0f), size = androidx.compose.ui.geometry.Size(right - left, top))
+        drawRect(dimColor, topLeft = Offset(left, bottom), size = androidx.compose.ui.geometry.Size(right - left, size.height - bottom))
+
+        val cropW = right - left
+        val cropH = bottom - top
+        drawRect(
+            color = Color.White,
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(cropW, cropH),
+            style = Stroke(2.dp.toPx())
+        )
+
+        for (i in 1..2) {
+            drawLine(Color.White.copy(alpha = 0.4f), Offset(left + cropW * i / 3f, top), Offset(left + cropW * i / 3f, bottom), 1.dp.toPx())
+            drawLine(Color.White.copy(alpha = 0.4f), Offset(left, top + cropH * i / 3f), Offset(right, top + cropH * i / 3f), 1.dp.toPx())
+        }
+
+        val hs = 16.dp.toPx()
+        val sw = 4.dp.toPx()
+        drawLine(Color.White, Offset(left, top), Offset(left + hs, top), sw)
+        drawLine(Color.White, Offset(left, top), Offset(left, top + hs), sw)
+        drawLine(Color.White, Offset(right, top), Offset(right - hs, top), sw)
+        drawLine(Color.White, Offset(right, top), Offset(right, top + hs), sw)
+        drawLine(Color.White, Offset(left, bottom), Offset(left + hs, bottom), sw)
+        drawLine(Color.White, Offset(left, bottom), Offset(left, bottom - hs), sw)
+        drawLine(Color.White, Offset(right, bottom), Offset(right - hs, bottom), sw)
+        drawLine(Color.White, Offset(right, bottom), Offset(right, bottom - hs), sw)
+
+        val midX = (left + right) / 2f
+        val midY = (top + bottom) / 2f
+        drawLine(Color.White, Offset(midX - hs/2, top), Offset(midX + hs/2, top), sw)
+        drawLine(Color.White, Offset(midX - hs/2, bottom), Offset(midX + hs/2, bottom), sw)
+        drawLine(Color.White, Offset(left, midY - hs/2), Offset(left, midY + hs/2), sw)
+        drawLine(Color.White, Offset(right, midY - hs/2), Offset(right, midY + hs/2), sw)
     }
 }
 
