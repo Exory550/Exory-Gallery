@@ -346,23 +346,10 @@ fun ZoomableImage(path: String, onTap: () -> Unit, pagerState: PagerState) {
                 detectTapGestures(
                     onDoubleTap = {
                         if (scale > 1f) { scale = 1f; offsetX = 0f; offsetY = 0f }
-                        else scale = 2.5f
+                        else { scale = 2.5f }
                     },
                     onTap = { onTap() }
                 )
-            }
-            .pointerInput(scale) {
-                if (scale > 1f) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    }
-                } else {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom > 1f) scale = (scale * zoom).coerceIn(1f, 5f)
-                    }
-                }
             }
     ) {
         AsyncImage(
@@ -378,6 +365,15 @@ fun ZoomableImage(path: String, onTap: () -> Unit, pagerState: PagerState) {
                     translationX = offsetX,
                     translationY = offsetY
                 )
+                .pointerInput(scale) {
+                    if (scale > 1f) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 5f)
+                            offsetX += pan.x
+                            offsetY += pan.y
+                        }
+                    }
+                }
         )
     }
 }
