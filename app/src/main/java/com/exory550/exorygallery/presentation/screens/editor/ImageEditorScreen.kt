@@ -432,17 +432,19 @@ fun CropOverlay(
                         val maxW: Float = canvasSize.width.toFloat()
                         val maxH: Float = canvasSize.height.toFloat()
                         val minSize = 80f
-                        when (activeHandle) {
-                            0 -> { left = (left + dx).coerceIn(0f, right - minSize); top = (top + dy).coerceIn(0f, bottom - minSize) }
-                            1 -> { right = (right + dx).coerceIn(left + minSize, maxW); top = (top + dy).coerceIn(0f, bottom - minSize) }
-                            2 -> { left = (left + dx).coerceIn(0f, right - minSize); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
-                            3 -> { right = (right + dx).coerceIn(left + minSize, maxW); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
-                            4 -> { top = (top + dy).coerceIn(0f, bottom - minSize) }
-                            5 -> { bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
-                            6 -> { left = (left + dx).coerceIn(0f, right - minSize) }
-                            7 -> { right = (right + dx).coerceIn(left + minSize, maxW) }
+                        if (maxW > minSize && maxH > minSize && right > left && bottom > top) {
+                            when (activeHandle) {
+                                0 -> { left = (left + dx).coerceIn(0f, (right - minSize).coerceAtLeast(0f)); top = (top + dy).coerceIn(0f, (bottom - minSize).coerceAtLeast(0f)) }
+                                1 -> { right = (right + dx).coerceIn(left + minSize, maxW); top = (top + dy).coerceIn(0f, (bottom - minSize).coerceAtLeast(0f)) }
+                                2 -> { left = (left + dx).coerceIn(0f, (right - minSize).coerceAtLeast(0f)); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                                3 -> { right = (right + dx).coerceIn(left + minSize, maxW); bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                                4 -> { top = (top + dy).coerceIn(0f, (bottom - minSize).coerceAtLeast(0f)) }
+                                5 -> { bottom = (bottom + dy).coerceIn(top + minSize, maxH) }
+                                6 -> { left = (left + dx).coerceIn(0f, (right - minSize).coerceAtLeast(0f)) }
+                                7 -> { right = (right + dx).coerceIn(left + minSize, maxW) }
+                            }
+                            onCropChange(Offset(left, top), Offset(right, bottom), true)
                         }
-                        onCropChange(Offset(left, top), Offset(right, bottom), true)
                     }
                 )
             }
