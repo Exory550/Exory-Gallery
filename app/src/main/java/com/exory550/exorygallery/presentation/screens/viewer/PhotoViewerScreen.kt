@@ -332,11 +332,7 @@ fun ZoomableImage(path: String, onTap: () -> Unit, pagerState: PagerState) {
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
-    val animatedScale by animateFloatAsState(
-        targetValue = scale,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "scale"
-    )
+
     LaunchedEffect(pagerState.currentPage) { scale = 1f; offsetX = 0f; offsetY = 0f }
 
     Box(
@@ -360,8 +356,8 @@ fun ZoomableImage(path: String, onTap: () -> Unit, pagerState: PagerState) {
                 .fillMaxSize()
                 .align(Alignment.Center)
                 .graphicsLayer(
-                    scaleX = animatedScale,
-                    scaleY = animatedScale,
+                    scaleX = scale,
+                    scaleY = scale,
                     translationX = offsetX,
                     translationY = offsetY
                 )
